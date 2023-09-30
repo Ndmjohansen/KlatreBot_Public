@@ -163,7 +163,7 @@ async def on_message(message):
         elif len(words) == 3 and int(words[2]) > 600:
             await message.channel.send(f"Måske {words[2]} sekunder er lige i overkanten, kaptajn")
 
-    if message.content.startswith('!jpg' or '!jpeg'):
+    if message.content.startswith('!jpg') or message.content.startswith('!jpeg'):
         # message parsing
         words = message.content.split()
         if len(words) == 2 and words[1][-4:] in [".jpg", "jpeg", ".png"]:
