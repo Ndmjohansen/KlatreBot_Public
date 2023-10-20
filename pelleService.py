@@ -8,10 +8,14 @@ import pytz
 KINDS = {'ACCOMMODATION': ':love_hotel:', 'DRIVING':':blue_car:', 'FLYING':':airplane:', 'HIKING':':man_running:', 'POINTOFINTEREST':':mount_fuji:', 'SIGHTSEEING':':statue_of_liberty:', 'WINE': ':wine:', 'TAKEOFF':':airplane:', 'LANDING':':airplane:', 'BREAKFAST':':pancakes:', 'DINNER':':sushi:','SLEEPING':':sleeping:','TRANSFER':':airplane:', 'CHILL':':pepedance:'}
 copenhagen = pytz.timezone('Europe/Copenhagen')
 
+
+
 def whereTheFuckIsPelle(debug=0):
     response = requests.get('https://pellelauritsen.net/australia.json')
     fulljs = response.json()
     js = {} # fulljs[1]
+    lastDistance = 1000000000
+    shortestEntry = {}
 
     for event in fulljs:
         if not 'begin' in event:
@@ -21,14 +25,23 @@ def whereTheFuckIsPelle(debug=0):
         now = copenhagen.localize(datetime.datetime.now())
         if debug:
             now = copenhagen.localize(parse("2023-11-07T09:00:00"))
+        if(lastDistance > (start - now).total_seconds()):
+            lastDistance = (start - now).total_seconds()
+            shortestEntry = event
+
         if(now > start and now < end):
             js = event
             break
 
+    outputString = ""
     if(len(js) ==0):
-        return "Pelle is idling..."
+        if(lastDistance < 0 or lastDistance == 1000000000):
+            return "Pelle er på vej til klatring..."
+        js = shortestEntry
+        outputString += f"In {lastDistance:.0f} seconds at: {pytz.timezone(js['begin']['timezone']).localize(parse(js['begin']['dateTime']))} - "
+        #return "Pelle is idling..."
 
-    outputString = f"{KINDS[js['kind']]} {js['title']} ({js['description']})"
+    outputString += f"{KINDS[js['kind']]} {js['title']} ({js['description']})"
     beginLocation = f"{js['begin']['location']}"
     endLocation = f"{js['end']['location']}"
     if(beginLocation != endLocation):
