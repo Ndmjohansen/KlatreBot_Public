@@ -9,6 +9,7 @@ KINDS = {'ACCOMMODATION': ':love_hotel:', 'DRIVING':':blue_car:', 'FLYING':':air
 copenhagen = pytz.timezone('Europe/Copenhagen')
 
 
+
 def whereTheFuckIsPelle(debug=0):
     response = requests.get('https://pellelauritsen.net/australia.json')
     fulljs = response.json()
