@@ -7,6 +7,7 @@ import requests
 import io
 import sys
 from PIL import Image
+from pelleService import whereTheFuckIsPelle
 
 client = discord.Client(intents=discord.Intents.all())
 DISCORD_CHANNEL_ID = 1003718776430268588
@@ -170,6 +171,12 @@ async def on_message(message):
             # await message.channel.send(f"Word count: {len(words)}, URL: {words[1]}, TEST1: {words[1][-4:]}")
             image = await jpeg(words[1])
             await message.channel.send(file=discord.File(fp=image, filename="jaypeg.jpg"))
+
+    if message.content.startswith('!pelle'):
+        await message.channel.send(whereTheFuckIsPelle())
+
+    if message.content.startswith('!pelle_debug'):
+        await message.channel.send(whereTheFuckIsPelle(1))
 
     if message.content.startswith('!say') and message.channel.id == 1049312345068933134:
         channel = client.get_channel(DISCORD_CHANNEL_ID)
