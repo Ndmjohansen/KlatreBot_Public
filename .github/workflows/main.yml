@@ -6,7 +6,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-    - name: updating klatrebot
+    - name: executing remote ssh commands using ssh key
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.SSH_IP }}
