@@ -12,7 +12,7 @@ jobs:
         host: ${{ secrets.SSH_IP }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_KEY }}
-        port: ${{ secrets.PORT }}
+        port: ${{ secrets.SSH_PORT }}
         script: |
           cd KlatreBot/KlatreBot_Public/
           git pull
