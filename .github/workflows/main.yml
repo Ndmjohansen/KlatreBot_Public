@@ -17,4 +17,4 @@ jobs:
           cd KlatreBot/KlatreBot_Public/
           git pull
           pkill python3
-          nohup python3 KlatreBot.py ${{ secrets.BOT_KEY}} &
+          nohup python3 KlatreBot.py ${{ secrets.BOT_KEY}} > nohup.out 2> nohup.err < /dev/null &
