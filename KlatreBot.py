@@ -8,12 +8,14 @@ import io
 import sys
 from PIL import Image
 from pelleService import whereTheFuckIsPelle
+import subprocess
 
 client = discord.Client(intents=discord.Intents.all())
 DISCORD_CHANNEL_ID = 1003718776430268588
 pattern = r".*(det\skan\sman\s(\w+\s)?ik).*"
 timeout = []
 Magnus = 229599553953726474
+startTime = datetime.datetime.now()
 
 
 def get_random_svar():
@@ -36,7 +38,8 @@ def get_random_svar():
 
 def get_dates_of_week(year, week_number):
     # Find the first day of the given week
-    first_day = datetime.datetime.strptime(f"{year}-{week_number}-1", "%G-%V-%u").date()
+    first_day = datetime.datetime.strptime(
+        f"{year}-{week_number}-1", "%G-%V-%u").date()
 
     # Get the dates of the entire week (from Monday to Sunday)
     dates_of_week = [first_day + datetime.timedelta(days=i) for i in range(7)]
@@ -83,7 +86,7 @@ async def timeout_user_by_id(id, time_in_sec):
     print(f"timeout {id} for {time_in_sec}")
     while id in timeout:
         time_passed_sec = (datetime.datetime.now()-timestamp_start).seconds
-        #print(f"{id} is on timeout for {time_passed_sec}")
+        # print(f"{id} is on timeout for {time_passed_sec}")
         if time_passed_sec > time_in_sec:
             timeout.remove(id)
         await asyncio.sleep(1)
@@ -99,7 +102,7 @@ async def jpeg(url):
             im = im.convert('RGB')
             im.thumbnail((650, 650))
             im.save(byte_IO, format="JPEG", quality=1, optimize=True)
-            #byteimg = Image.open(byte_IO)
+            # byteimg = Image.open(byte_IO)
             byte_IO.seek(0)
             return byte_IO
 
@@ -137,11 +140,15 @@ async def on_message(message):
         for match in matches:
             ugenr = re.findall(r'\d+', match)
             if weeks_in_year >= int(ugenr[0]) >= week_num:
-                dates = get_dates_of_week(datetime.datetime.now().year, int(ugenr[0]))
-                send_string_list.append(f"Uge {ugenr[0]}, {dates[0]} til {dates[-1]}")
+                dates = get_dates_of_week(
+                    datetime.datetime.now().year, int(ugenr[0]))
+                send_string_list.append(
+                    f"Uge {ugenr[0]}, {dates[0]} til {dates[-1]}")
             if weeks_in_year >= int(ugenr[0]) <= week_num:
-                dates = get_dates_of_week(datetime.datetime.now().year + 1, int(ugenr[0]))
-                send_string_list.append(f"Uge {ugenr[0]}, {dates[0]} til {dates[-1]}")
+                dates = get_dates_of_week(
+                    datetime.datetime.now().year + 1, int(ugenr[0]))
+                send_string_list.append(
+                    f"Uge {ugenr[0]}, {dates[0]} til {dates[-1]}")
         if len(send_string_list) > 0:
             final_string = " - ".join(send_string_list)
             await message.channel.send(final_string)
@@ -175,6 +182,15 @@ async def on_message(message):
     if message.content.startswith('!pelle'):
         await message.channel.send(whereTheFuckIsPelle())
 
+    if message.content.startswith('!uptime'):
+        totalUptimeSeconds = (datetime.datetime.now() -
+                              startTime).total_seconds()
+        prettyUptime = "{:0>8}".format(
+            str(datetime.timedelta(seconds=totalUptimeSeconds)))
+        gitHash = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+        await message.channel.send(f"Jeg har kørt i {prettyUptime} på version https://github.com/Ndmjohansen/KlatreBot_Public/commit/{gitHash}")
+
     if message.content.startswith('!pelle_debug'):
         await message.channel.send(whereTheFuckIsPelle(1))
 
@@ -197,8 +213,8 @@ async def on_message(message):
         if 0 <= datetime.datetime.now().hour < 10:
             await message.channel.send(f'Det er vist over din sengetid {message.author.name}')
             client.loop.create_task(go_to_bed(message))
-        #elif day_of_week in [0, 3] and now.hour < 17:
-            #await message.channel.send('Ro på kaptajn, folket er på arbejde')
+        # elif day_of_week in [0, 3] and now.hour < 17:
+            # await message.channel.send('Ro på kaptajn, folket er på arbejde')
         else:
             await message.channel.send('@everyone Hva sker der? er i.. er i glar?')
             await message.channel.send('https://imgur.com/CnRFnel')
