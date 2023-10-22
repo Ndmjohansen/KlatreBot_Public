@@ -6,6 +6,7 @@ import asyncio
 import requests
 import io
 import sys
+from KlatringAttendance import KlatringAttendance
 from PIL import Image
 from pelleService import whereTheFuckIsPelle
 import subprocess
@@ -72,8 +73,14 @@ async def send_message_at_time():
         if day_of_week in [0, 3] and now.hour == 17:
             # Send the message to the specified text channel
             channel = client.get_channel(DISCORD_CHANNEL_ID)
-            await channel.send('@everyone Hva sker der? er i.. er i glar?')
-            await channel.send('https://imgur.com/CnRFnel')
+
+            global latestKlatreAttendances
+            latestKlatreAttendances = KlatringAttendance()
+            lastReactToMessage = await channel.send(embed=latestKlatreAttendances.get_embed())
+            latestKlatreAttendances.set_message(
+                discord_message=lastReactToMessage)
+            await lastReactToMessage.add_reaction("✅")
+            await lastReactToMessage.add_reaction("❌")
             await asyncio.sleep(60 * 60 * 23)
 
         # Wait for one minute before checking the time again
@@ -124,6 +131,16 @@ async def on_ready():
         print('Task not running, starting task')
         client.loop.create_task(send_message_at_time())
 
+
+@client.event
+async def on_reaction_add(reaction, user):
+    if (reaction.message.author == client.user and client.user != user and reaction.message == latestKlatreAttendances.message):
+        if (reaction.emoji == "✅"):
+            latestKlatreAttendances.add_attendee(user)
+        elif (reaction.emoji == "❌"):
+            latestKlatreAttendances.add_slacker(user)
+
+        await latestKlatreAttendances.message.edit(embed=latestKlatreAttendances.get_embed())
 
 @client.event
 async def on_message(message):
