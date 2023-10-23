@@ -18,11 +18,15 @@ class KlatringAttendance:
     def add_attendee(self, user):
         if (user in self.slackers):
             self.slackers.remove(user)
+        if (user in self.godsAmongMen):
+            return
         self.godsAmongMen.append(user)
 
     def add_slacker(self, user):
         if (user in self.godsAmongMen):
             self.godsAmongMen.remove(user)
+        if (user in self.slackers):
+            return
         self.slackers.append(user)
 
     def get_embed(self):
@@ -33,4 +37,4 @@ class KlatringAttendance:
         return self.embed
 
     def get_message(self):
-        return f"{self.defaultMessage} \n✅: {','.join([u.global_name for u in self.godsAmongMen])}\n❌: {','.join([u.global_name for u in self.slackers])}"
+        return f"{self.defaultMessage} \n✅: {', '.join([u.global_name for u in self.godsAmongMen])}\n❌: {', '.join([u.global_name for u in self.slackers])}"

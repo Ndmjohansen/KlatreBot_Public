@@ -62,6 +62,19 @@ def number_of_weeks(year):
         return iso_week - 1
 
 
+async def send_and_track_klatretid_message():
+    # Send the message to the specified text channel
+    channel = client.get_channel(DISCORD_CHANNEL_ID)
+
+    global latestKlatreAttendances
+    latestKlatreAttendances = KlatringAttendance()
+    lastReactToMessage = await channel.send(embed=latestKlatreAttendances.get_embed())
+    latestKlatreAttendances.set_message(
+        discord_message=lastReactToMessage)
+    await lastReactToMessage.add_reaction("✅")
+    await lastReactToMessage.add_reaction("❌")
+
+
 async def send_message_at_time():
     # Wait until the specified time
     while True:
@@ -71,16 +84,7 @@ async def send_message_at_time():
 
         # Only send a message on Monday and Thursday at 17:00
         if day_of_week in [0, 3] and now.hour == 17:
-            # Send the message to the specified text channel
-            channel = client.get_channel(DISCORD_CHANNEL_ID)
-
-            global latestKlatreAttendances
-            latestKlatreAttendances = KlatringAttendance()
-            lastReactToMessage = await channel.send(embed=latestKlatreAttendances.get_embed())
-            latestKlatreAttendances.set_message(
-                discord_message=lastReactToMessage)
-            await lastReactToMessage.add_reaction("✅")
-            await lastReactToMessage.add_reaction("❌")
+            await send_and_track_klatretid_message()
             await asyncio.sleep(60 * 60 * 23)
 
         # Wait for one minute before checking the time again
@@ -141,6 +145,7 @@ async def on_reaction_add(reaction, user):
             latestKlatreAttendances.add_slacker(user)
 
         await latestKlatreAttendances.message.edit(embed=latestKlatreAttendances.get_embed())
+
 
 @client.event
 async def on_message(message):
