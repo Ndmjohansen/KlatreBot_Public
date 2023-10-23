@@ -64,6 +64,7 @@ def number_of_weeks(year):
 
 async def send_and_track_klatretid_message(channel):
     # Send the message to the specified text channel
+    channel = client.get_channel(channel)
     global latestKlatreAttendances
     latestKlatreAttendances = KlatringAttendance()
     lastReactToMessage = await channel.send(embed=latestKlatreAttendances.get_embed())
