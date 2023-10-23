@@ -137,6 +137,9 @@ async def on_ready():
 
 @client.event
 async def on_reaction_add(reaction, user):
+    if (reaction.message.author != client.user and client.user != user):
+        await reaction.message.add_reaction(reaction.emoji)
+
     if (reaction.message.author == client.user and client.user != user and reaction.message == latestKlatreAttendances.message):
         if (reaction.emoji == "✅"):
             latestKlatreAttendances.add_attendee(user)
