@@ -153,6 +153,7 @@ async def on_message(message):
             and message.channel.id == 1049312345068933134 \
             and message.author.id != 1049311574638202950:
         await message.channel.send(message.content)
+        await send_and_track_klatretid_message()
 
     matches = re.findall(r'uge\s\d{1,2}', message.content.lower())
     if len(matches) >= 1 and not message.author.id == 1049311574638202950:
