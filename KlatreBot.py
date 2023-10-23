@@ -62,7 +62,7 @@ def number_of_weeks(year):
         return iso_week - 1
 
 
-async def send_and_track_klatretid_message():
+async def send_and_track_klatretid_message(channel):
     # Send the message to the specified text channel
     channel = client.get_channel(DISCORD_CHANNEL_ID)
 
@@ -84,7 +84,7 @@ async def send_message_at_time():
 
         # Only send a message on Monday and Thursday at 17:00
         if day_of_week in [0, 3] and now.hour == 17:
-            await send_and_track_klatretid_message()
+            await send_and_track_klatretid_message(DISCORD_CHANNEL_ID)
             await asyncio.sleep(60 * 60 * 23)
 
         # Wait for one minute before checking the time again
@@ -153,7 +153,7 @@ async def on_message(message):
             and message.channel.id == 1049312345068933134 \
             and message.author.id != 1049311574638202950:
         await message.channel.send(message.content)
-        await send_and_track_klatretid_message()
+        await send_and_track_klatretid_message(1049312345068933134)
 
     matches = re.findall(r'uge\s\d{1,2}', message.content.lower())
     if len(matches) >= 1 and not message.author.id == 1049311574638202950:
