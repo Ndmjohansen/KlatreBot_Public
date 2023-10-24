@@ -21,6 +21,7 @@ class KlatringAttendance:
         if (user in self.godsAmongMen):
             return
         self.godsAmongMen.append(user)
+        print(self.godsAmongMen)
 
     def add_slacker(self, user):
         if (user in self.godsAmongMen):
@@ -37,4 +38,6 @@ class KlatringAttendance:
         return self.embed
 
     def get_message(self):
-        return f"{self.defaultMessage} \n✅: {', '.join([u.global_name for u in self.godsAmongMen])}\n❌: {', '.join([u.global_name for u in self.slackers])}"
+        return f"{self.defaultMessage} " \
+               f"\n✅: {', '.join([u.global_name for u in self.godsAmongMen])}" \
+               f"\n❌: {', '.join([u.global_name for u in self.slackers])}"
