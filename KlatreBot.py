@@ -95,7 +95,7 @@ async def timeout_user_by_id(id, time_in_sec):
     timestamp_start = datetime.datetime.now()
     print(f"timeout {id} for {time_in_sec}")
     while id in timeout:
-        time_passed_sec = (datetime.datetime.now()-timestamp_start).seconds
+        time_passed_sec = (datetime.datetime.now() - timestamp_start).seconds
         # print(f"{id} is on timeout for {time_passed_sec}")
         if time_passed_sec > time_in_sec:
             timeout.remove(id)
@@ -157,6 +157,7 @@ async def on_message(message):
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
             and not message.author.bot \
             and message.author != client.user:  # Test is not itself
+
         await message.channel.send(message.content)
 
     matches = re.findall(r'uge\s\d{1,2}', message.content.lower())
@@ -216,7 +217,8 @@ async def on_message(message):
             str(datetime.timedelta(seconds=totalUptimeSeconds)))
         gitHash = subprocess.check_output(
             ['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
-        await message.channel.send(f"Jeg har kørt i {prettyUptime} på version https://github.com/Ndmjohansen/KlatreBot_Public/commit/{gitHash}")
+        await message.channel.send(
+            f"Jeg har kørt i {prettyUptime} på version https://github.com/Ndmjohansen/KlatreBot_Public/commit/{gitHash}")
 
     if message.content.startswith('!pelle_debug'):
         await message.channel.send(whereTheFuckIsPelle(1))
@@ -241,7 +243,7 @@ async def on_message(message):
             await message.channel.send(f'Det er vist over din sengetid {message.author.name}')
             client.loop.create_task(go_to_bed(message))
         # elif day_of_week in [0, 3] and now.hour < 17:
-            # await message.channel.send('Ro på kaptajn, folket er på arbejde')
+        # await message.channel.send('Ro på kaptajn, folket er på arbejde')
         else:
             await message.channel.send('@everyone Hva sker der? er i.. er i glar?')
             await message.channel.send('https://imgur.com/CnRFnel')
@@ -251,5 +253,6 @@ async def on_message(message):
     if re.search(pattern, msg):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
+
 
 client.run(sys.argv[1])
