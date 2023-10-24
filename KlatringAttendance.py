@@ -2,6 +2,11 @@ import discord
 
 
 class KlatringAttendance:
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(KlatringAttendance, cls).__new__(cls)
+        return cls.instance
+
     def __init__(self):
         self.defaultMessage = "@everyone Hva sker der? er i.. er i glar?\n"
 
@@ -9,8 +14,9 @@ class KlatringAttendance:
             title="Klatretid!",
             description=self.defaultMessage)
         self.embed.set_image(url="https://i.imgur.com/9uMGPae.gif")
-        self.slackers = []
-        self.godsAmongMen = []
+        if (not hasattr(self, 'slackers') or not hasattr(self, 'godsAmongMen')):
+            self.slackers = []
+            self.godsAmongMen = []
 
     def set_message(self, discord_message):
         self.message = discord_message
@@ -29,6 +35,10 @@ class KlatringAttendance:
             return
         self.slackers.append(user)
 
+    def reset(self):
+        self.slackers.clear()
+        self.godsAmongMen.clear()
+
     def get_embed(self):
         if (len(self.slackers) == 0 and len(self.godsAmongMen) == 0):
             self.embed.description = self.defaultMessage
@@ -36,5 +46,12 @@ class KlatringAttendance:
             self.embed.description = self.get_message()
         return self.embed
 
+    def get_name(self, member):
+        if (not member.nick is None):
+            return member.nick
+        if (not member.global_name is None):
+            return member.global_name
+        return member.name
+
     def get_message(self):
-        return f"{self.defaultMessage} \n✅: {', '.join([u.global_name for u in self.godsAmongMen])}\n❌: {', '.join([u.global_name for u in self.slackers])}"
+        return f"{self.defaultMessage} \n✅: {', '.join([self.get_name(u) for u in self.godsAmongMen])}\n❌: {', '.join([self.get_name(u) for u in self.slackers])}"

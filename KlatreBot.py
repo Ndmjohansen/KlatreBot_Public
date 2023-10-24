@@ -13,6 +13,7 @@ import subprocess
 
 client = discord.Client(intents=discord.Intents.all())
 DISCORD_CHANNEL_ID = 1003718776430268588
+DISCORD_SANDBOX_CHANNEL_ID = 1049312345068933134
 pattern = r".*(det\skan\sman\s(\w+\s)?ik).*"
 timeout = []
 Magnus = 229599553953726474
@@ -65,10 +66,9 @@ def number_of_weeks(year):
 async def send_and_track_klatretid_message(channel):
     # Send the message to the specified text channel
     channel = client.get_channel(channel)
-    global latestKlatreAttendances
-    latestKlatreAttendances = KlatringAttendance()
-    lastReactToMessage = await channel.send(embed=latestKlatreAttendances.get_embed())
-    latestKlatreAttendances.set_message(
+    KlatringAttendance().reset()
+    lastReactToMessage = await channel.send(embed=KlatringAttendance().get_embed())
+    KlatringAttendance().set_message(
         discord_message=lastReactToMessage)
     await lastReactToMessage.add_reaction("✅")
     await lastReactToMessage.add_reaction("❌")
@@ -137,25 +137,27 @@ async def on_ready():
 
 @client.event
 async def on_reaction_add(reaction, user):
-    if (reaction.message.author != client.user and client.user != user):
-        await reaction.message.add_reaction(reaction.emoji)
-
-    if (reaction.message.author == client.user and client.user != user and reaction.message == latestKlatreAttendances.message):
+    if (reaction.message.author == client.user and client.user != user and reaction.message == KlatringAttendance().message):
         if (reaction.emoji == "✅"):
-            latestKlatreAttendances.add_attendee(user)
+            KlatringAttendance().add_attendee(user)
         elif (reaction.emoji == "❌"):
-            latestKlatreAttendances.add_slacker(user)
+            KlatringAttendance().add_slacker(user)
 
-        await latestKlatreAttendances.message.edit(embed=latestKlatreAttendances.get_embed())
+        await reaction.message.edit(embed=KlatringAttendance().get_embed())
 
 
 @client.event
 async def on_message(message):
+    if message.content.startswith('!lortebot') \
+            and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
+            and message.author != client.user:  # Test is not itself
+        await send_and_track_klatretid_message(DISCORD_SANDBOX_CHANNEL_ID)
+
     if message.content.startswith('!debug') \
-            and message.channel.id == 1049312345068933134 \
-            and message.author.id != 1049311574638202950:
+            and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
+            and not message.author.bot \
+            and message.author != client.user:  # Test is not itself
         await message.channel.send(message.content)
-        await send_and_track_klatretid_message(1049312345068933134)
 
     matches = re.findall(r'uge\s\d{1,2}', message.content.lower())
     if len(matches) >= 1 and not message.author.id == 1049311574638202950:
