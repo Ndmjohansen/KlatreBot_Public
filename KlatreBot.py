@@ -152,6 +152,7 @@ async def on_reaction_add(reaction, user):
 @client.event
 async def on_message(message):
     if message.content.startswith('!debug') \
+            and not message.author.bot \
             and message.channel.id == 1049312345068933134 \
             and message.author.id != 1049311574638202950:
         await message.channel.send(message.content)
