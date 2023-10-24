@@ -137,10 +137,10 @@ async def on_ready():
 
 @client.event
 async def on_reaction_add(reaction, user):
-    if (reaction.message.author == client.user and client.user != user and reaction.message == KlatringAttendance().message):
-        if (reaction.emoji == "✅"):
+    if reaction.message.author == client.user and client.user != user and reaction.message == KlatringAttendance().message:
+        if reaction.emoji == "✅":
             KlatringAttendance().add_attendee(user)
-        elif (reaction.emoji == "❌"):
+        elif reaction.emoji == "❌":
             KlatringAttendance().add_slacker(user)
 
         await reaction.message.edit(embed=KlatringAttendance().get_embed())
@@ -157,7 +157,6 @@ async def on_message(message):
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
             and not message.author.bot \
             and message.author != client.user:  # Test is not itself
-
         await message.channel.send(message.content)
 
     matches = re.findall(r'uge\s\d{1,2}', message.content.lower())

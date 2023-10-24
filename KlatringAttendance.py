@@ -14,7 +14,7 @@ class KlatringAttendance:
             title="Klatretid!",
             description=self.defaultMessage)
         self.embed.set_image(url="https://i.imgur.com/9uMGPae.gif")
-        if (not hasattr(self, 'slackers') or not hasattr(self, 'godsAmongMen')):
+        if not hasattr(self, 'slackers') or not hasattr(self, 'godsAmongMen'):
             self.slackers = []
             self.godsAmongMen = []
 
@@ -22,17 +22,16 @@ class KlatringAttendance:
         self.message = discord_message
 
     def add_attendee(self, user):
-        if (user in self.slackers):
+        if user in self.slackers:
             self.slackers.remove(user)
-        if (user in self.godsAmongMen):
+        if user in self.godsAmongMen:
             return
         self.godsAmongMen.append(user)
-        print(self.godsAmongMen)
 
     def add_slacker(self, user):
-        if (user in self.godsAmongMen):
+        if user in self.godsAmongMen:
             self.godsAmongMen.remove(user)
-        if (user in self.slackers):
+        if user in self.slackers:
             return
         self.slackers.append(user)
 
@@ -41,16 +40,16 @@ class KlatringAttendance:
         self.godsAmongMen.clear()
 
     def get_embed(self):
-        if (len(self.slackers) == 0 and len(self.godsAmongMen) == 0):
+        if len(self.slackers) == 0 and len(self.godsAmongMen) == 0:
             self.embed.description = self.defaultMessage
         else:
             self.embed.description = self.get_message()
         return self.embed
 
     def get_name(self, member):
-        if (not member.nick is None):
+        if not member.nick is None:
             return member.nick
-        if (not member.global_name is None):
+        if not member.global_name is None:
             return member.global_name
         return member.name
 
