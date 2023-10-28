@@ -9,6 +9,7 @@ import sys
 from KlatringAttendance import KlatringAttendance
 from PIL import Image
 from pelleService import whereTheFuckIsPelle
+from KlatreGPT import KlatreGPT
 import subprocess
 
 client = discord.Client(intents=discord.Intents.all())
@@ -18,7 +19,7 @@ pattern = r".*(det\skan\sman\s(\w+\s)?ik).*"
 timeout = []
 Magnus = 229599553953726474
 startTime = datetime.datetime.now()
-
+KGPT = KlatreGPT(sys.argv[2])
 
 def get_random_svar():
     svar = [
@@ -123,6 +124,11 @@ async def go_to_bed(message):
         await client.get_channel(message.channel.id).send(f'Gå i seng <@{message.author.id}>')
 
 
+async def proompt(q, channel):
+    recent_messages = await KGPT.get_recent_messages(channel, client)
+    return KGPT.prompt_gpt(recent_messages, q)
+
+
 @client.event
 async def on_ready():
     # Start the send_message_at_time function when the bot connects to Discord
@@ -148,6 +154,16 @@ async def on_reaction_add(reaction, user):
 
 @client.event
 async def on_message(message):
+    if message.content.lower()[0:9] == 'klatregpt' and message.content[-1] == '?':
+        # print("AVANCERET AI")
+        message_content = message.content[9:].strip()
+        if message_content.startswith(','):
+            inner = message_content.lstrip(',').strip()
+            msg = await proompt(inner, message.channel)
+            await message.channel.send(msg)
+        else:
+            msg = await proompt(message_content, message.channel)
+            await message.channel.send(msg)
     if message.content.startswith('!lortebot') \
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
             and message.author != client.user:  # Test is not itself
@@ -253,5 +269,5 @@ async def on_message(message):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
 
-
 client.run(sys.argv[1])
+
