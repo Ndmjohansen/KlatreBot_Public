@@ -125,7 +125,7 @@ async def go_to_bed(message):
 
 
 async def proompt(q, channel):
-    recent_messages = await KGPT.get_recent_messages(DISCORD_CHANNEL_ID, client)
+    recent_messages = await KGPT.get_recent_messages(channel, client)
     return KGPT.prompt_gpt(recent_messages, q)
 
 
