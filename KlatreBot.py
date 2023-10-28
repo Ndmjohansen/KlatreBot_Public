@@ -161,7 +161,7 @@ async def on_message(message):
             # print('Starts with, ')
             inner = message.content[9:].strip().lstrip(',').strip()
             msg = await proompt(inner)
-            print(msg)
+            # print(msg)
             await message.channel.send(msg)
         else:
             msg = await proompt(message.content[9:].strip())
