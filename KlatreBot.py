@@ -9,6 +9,7 @@ import sys
 from KlatringAttendance import KlatringAttendance
 from PIL import Image
 from pelleService import whereTheFuckIsPelle
+import KlatreGPT
 import subprocess
 
 client = discord.Client(intents=discord.Intents.all())
@@ -124,12 +125,16 @@ async def go_to_bed(message):
 
 
 async def get_recent_messages(channel_id):
-    messages = []
+    messages = ''
     async for message in client.get_channel(channel_id).history(limit=5):
-        #messages = messages + f"{message.author.display_name}: {message.content} \n"
-        messages.append(message)
-    for message in reversed(messages):
-        print(f"{message.author.display_name}: {message.content}")
+        messages = f"\"{message.author.display_name}: {message.content}\"\n" + messages
+    print('Retrieved history')
+    return messages
+
+
+async def proompt(q):
+    recent_messages = await get_recent_messages(DISCORD_CHANNEL_ID)
+    return KlatreGPT.prompt_gpt(recent_messages, q)
 
 
 @client.event
@@ -142,7 +147,6 @@ async def on_ready():
     if 'send_message_at_time' not in coro_names:
         print('Task not running, starting task')
         client.loop.create_task(send_message_at_time())
-    await get_recent_messages(DISCORD_CHANNEL_ID)
 
 
 @client.event
@@ -158,8 +162,19 @@ async def on_reaction_add(reaction, user):
 
 @client.event
 async def on_message(message):
-    if message.content.startswith('!hist'):
-        print('asd')
+    if message.content.lower()[0:9] == 'klatregpt' and message.content[-1] == '?':
+        print("AVANCERET AI")
+        # print(message.content[9:].strip())
+        if message.content[9:].strip().startswith(','):
+            # print('Starts with, ')
+            inner = message.content[9:].strip().lstrip(',').strip()
+            msg = await proompt(inner)
+            print(msg)
+            await message.channel.send(msg)
+        else:
+            msg = await proompt(message.content[9:].strip())
+            await message.channel.send(msg)
+            # print(message.content[9:].strip())
     if message.content.startswith('!lortebot') \
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
             and message.author != client.user:  # Test is not itself
