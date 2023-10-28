@@ -124,16 +124,8 @@ async def go_to_bed(message):
         await client.get_channel(message.channel.id).send(f'Gå i seng <@{message.author.id}>')
 
 
-async def get_recent_messages(channel_id):
-    messages = ''
-    async for message in client.get_channel(channel_id).history(limit=5):
-        messages = f"\"{message.author.display_name}: {message.content}\"\n" + messages
-    print('Retrieved history')
-    return messages
-
-
 async def proompt(q):
-    recent_messages = await get_recent_messages(DISCORD_CHANNEL_ID)
+    recent_messages = await KlatreGPT.get_recent_messages(DISCORD_CHANNEL_ID, client)
     return KlatreGPT.prompt_gpt(recent_messages, q)
 
 
