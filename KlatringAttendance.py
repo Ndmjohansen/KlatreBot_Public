@@ -46,7 +46,8 @@ class KlatringAttendance:
             self.embed.description = self.get_message()
         return self.embed
 
-    def get_name(self, member):
+    @staticmethod
+    def get_name(member):
         if not member.nick is None:
             return member.nick
         if not member.global_name is None:

@@ -10,6 +10,12 @@ KINDS = {'ACCOMMODATION': ':love_hotel:', 'DRIVING': ':blue_car:', 'FLYING': ':a
 copenhagen = pytz.timezone('Europe/Copenhagen')
 
 
+def getMomentStyleFromSeconds(totalSeconds):
+    minutes, seconds = divmod(totalSeconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return "%d timer %02d minuter %02d sekunder" % (hours, minutes, seconds)
+
+
 def whereTheFuckIsPelle(debug=0):
     fulljs = []
     gitgud = 0
@@ -59,10 +65,7 @@ def whereTheFuckIsPelle(debug=0):
         if (lastDistance < 0 or lastDistance == 1000000000):
             return "Pelle er på vej til klatring..."
 
-        minutes, seconds = divmod(lastDistance, 60)
-        hours, minutes = divmod(minutes, 60)
-        prettySeconds = "%d timer %02d minuter %02d sekunder" % (
-            hours, minutes, seconds)
+        prettySeconds = getMomentStyleFromSeconds(lastDistance)
 
         js = shortestEntry
         outputString += f"Om {prettySeconds}: {pytz.timezone(js['begin']['timezone']).localize(parse(js['begin']['dateTime']))} - "
@@ -72,6 +75,13 @@ def whereTheFuckIsPelle(debug=0):
     endLocation = f"{js['end']['location']}"
     if (beginLocation != endLocation):
         outputString += f" ({js['begin']['location']} -> {js['end']['location'] })"
+
+    end = pytz.timezone(event['end']['timezone']).localize(
+        parse(event['end']['dateTime']))
+    now = copenhagen.localize(datetime.datetime.now())
+    sekunderTilEnd = getMomentStyleFromSeconds((end - now).total_seconds())
+
+    outputString += f" færdig om {sekunderTilEnd}"
 
     if ('url' in js):
         outputString += f" {js['url']}"
