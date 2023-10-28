@@ -69,8 +69,12 @@ class KlatreGPT:
         return member.name
 
     async def resolve_user_id(self, user_id, client, message):
-        user = await message.guild.get_member(user_id)
-        if user is None:  # This happens if you are talking about a discord user that is not on the current server.
-            user = await client.get_user(user_id)
+        try:
+            user = await message.guild.get_member(user_id)
+            if user is None:  # This happens if you are talking about a discord user that is not on the current server.
+                user = await client.get_user(user_id)
+                return user.display_name
+        except TypeError:
+            user = await client.fetch_user(user_id)
             return user.display_name
-        return self.get_name(user)
+            #return self.get_name(user)

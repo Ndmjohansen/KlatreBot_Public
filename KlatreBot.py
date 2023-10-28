@@ -159,10 +159,11 @@ async def on_message(message):
         message_content = message.content[9:].strip()
         if message_content.startswith(','):
             inner = message_content.lstrip(',').strip()
-            msg = await proompt(inner, message.channel)
+            print(inner)
+            msg = await proompt(inner, message.channel.id)
             await message.channel.send(msg)
         else:
-            msg = await proompt(message_content, message.channel)
+            msg = await proompt(message_content, message.channel.id)
             await message.channel.send(msg)
     if message.content.startswith('!lortebot') \
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
