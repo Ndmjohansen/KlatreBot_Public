@@ -155,18 +155,15 @@ async def on_reaction_add(reaction, user):
 @client.event
 async def on_message(message):
     if message.content.lower()[0:9] == 'klatregpt' and message.content[-1] == '?':
-        print("AVANCERET AI")
-        # print(message.content[9:].strip())
-        if message.content[9:].strip().startswith(','):
-            # print('Starts with, ')
-            inner = message.content[9:].strip().lstrip(',').strip()
+        # print("AVANCERET AI")
+        message_content = message.content[9:].strip()
+        if message_content.startswith(','):
+            inner = message_content.lstrip(',').strip()
             msg = await proompt(inner, message.channel)
-            # print(msg)
             await message.channel.send(msg)
         else:
-            msg = await proompt(message.content[9:].strip(), message.channel)
+            msg = await proompt(message_content, message.channel)
             await message.channel.send(msg)
-            # print(message.content[9:].strip())
     if message.content.startswith('!lortebot') \
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
             and message.author != client.user:  # Test is not itself
