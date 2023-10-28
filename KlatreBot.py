@@ -123,6 +123,13 @@ async def go_to_bed(message):
         await client.get_channel(message.channel.id).send(f'Gå i seng <@{message.author.id}>')
 
 
+async def get_recent_messages(channel_id):
+    messages = ''
+    async for message in client.get_channel(channel_id).history(limit=5):
+        messages = messages + f"{message.author.display_name}: {message.content} \n"
+    print(messages)
+
+
 @client.event
 async def on_ready():
     # Start the send_message_at_time function when the bot connects to Discord
@@ -133,6 +140,7 @@ async def on_ready():
     if 'send_message_at_time' not in coro_names:
         print('Task not running, starting task')
         client.loop.create_task(send_message_at_time())
+    await get_recent_messages(DISCORD_SANDBOX_CHANNEL_ID)
 
 
 @client.event
@@ -148,6 +156,8 @@ async def on_reaction_add(reaction, user):
 
 @client.event
 async def on_message(message):
+    if message.content.startswith('!hist'):
+        print('asd')
     if message.content.startswith('!lortebot') \
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
             and message.author != client.user:  # Test is not itself
