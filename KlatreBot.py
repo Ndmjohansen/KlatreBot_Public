@@ -124,10 +124,12 @@ async def go_to_bed(message):
 
 
 async def get_recent_messages(channel_id):
-    messages = ''
+    messages = []
     async for message in client.get_channel(channel_id).history(limit=5):
-        messages = messages + f"{message.author.display_name}: {message.content} \n"
-    print(messages)
+        #messages = messages + f"{message.author.display_name}: {message.content} \n"
+        messages.append(message)
+    for message in reversed(messages):
+        print(f"{message.author.display_name}: {message.content}")
 
 
 @client.event
@@ -140,7 +142,7 @@ async def on_ready():
     if 'send_message_at_time' not in coro_names:
         print('Task not running, starting task')
         client.loop.create_task(send_message_at_time())
-    await get_recent_messages(DISCORD_SANDBOX_CHANNEL_ID)
+    await get_recent_messages(DISCORD_CHANNEL_ID)
 
 
 @client.event
