@@ -9,7 +9,7 @@ import sys
 from KlatringAttendance import KlatringAttendance
 from PIL import Image
 from pelleService import whereTheFuckIsPelle
-import KlatreGPT
+from KlatreGPT import KlatreGPT
 import subprocess
 
 client = discord.Client(intents=discord.Intents.all())
@@ -19,7 +19,7 @@ pattern = r".*(det\skan\sman\s(\w+\s)?ik).*"
 timeout = []
 Magnus = 229599553953726474
 startTime = datetime.datetime.now()
-
+KGPT = KlatreGPT(sys.argv[2])
 
 def get_random_svar():
     svar = [
@@ -124,9 +124,9 @@ async def go_to_bed(message):
         await client.get_channel(message.channel.id).send(f'Gå i seng <@{message.author.id}>')
 
 
-async def proompt(q):
-    recent_messages = await KlatreGPT.get_recent_messages(DISCORD_CHANNEL_ID, client)
-    return KlatreGPT.prompt_gpt(recent_messages, q)
+async def proompt(q, channel):
+    recent_messages = await KGPT.get_recent_messages(DISCORD_CHANNEL_ID, client)
+    return KGPT.prompt_gpt(recent_messages, q)
 
 
 @client.event
@@ -160,11 +160,11 @@ async def on_message(message):
         if message.content[9:].strip().startswith(','):
             # print('Starts with, ')
             inner = message.content[9:].strip().lstrip(',').strip()
-            msg = await proompt(inner)
+            msg = await proompt(inner, message.channel)
             # print(msg)
             await message.channel.send(msg)
         else:
-            msg = await proompt(message.content[9:].strip())
+            msg = await proompt(message.content[9:].strip(), message.channel)
             await message.channel.send(msg)
             # print(message.content[9:].strip())
     if message.content.startswith('!lortebot') \
@@ -272,5 +272,5 @@ async def on_message(message):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
 
-
 client.run(sys.argv[1])
+
