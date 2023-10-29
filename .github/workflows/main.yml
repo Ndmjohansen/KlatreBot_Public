@@ -1,22 +1,22 @@
 name: Remote SSH
-on: 
+on:
   push:
     branches: ["main"]
-    
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
-    - name: executing remote ssh commands using ssh key
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.SSH_IP }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_KEY }}
-        port: ${{ secrets.SSH_PORT }}
-        script: |
-          cd KlatreBot/KlatreBot_Public/
-          git pull
-          pkill python3
-          nohup /python3env/bin/python3 KlatreBot.py ${{ secrets.BOT_KEY}} ${{ secrets.OPENAI_API}} > nohup.out 2> nohup.err < /dev/null &
+      - name: executing remote ssh commands using ssh key
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd KlatreBot/KlatreBot_Public/
+            git pull
+            pkill python3
+            nohup /python3env/bin/python3 KlatreBot.py --discordkey ${{ secrets.BOT_KEY}} --openaikey ${{ secrets.OPENAI_API}} > nohup.out 2> nohup.err < /dev/null &
