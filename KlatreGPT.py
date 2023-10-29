@@ -23,7 +23,8 @@ class KlatreGPT:
             return True
 
     def prompt_gpt(self, prompt_context, prompt_question):
-        if self.is_rate_limited(): return 'Nu slapper du fandme lige lidt af med de spørgsmål'
+        if self.is_rate_limited():
+            return 'Nu slapper du fandme lige lidt af med de spørgsmål'
 
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -40,7 +41,8 @@ class KlatreGPT:
                  }
             ]
         )
-        print(f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
+        print(
+            f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
         returnval = response['choices'][0]['message']['content']
         print(f"Result from OpenAI: {returnval}")
         return returnval
@@ -48,12 +50,14 @@ class KlatreGPT:
     async def get_recent_messages(self, channel_id, client):
         id_pattern = r"<@\d*>"
         messages = ''
-        async for message in client.get_channel(channel_id).history(limit=5):
+        channel = client.get_channel(channel_id)
+        async for message in channel.history(limit=5):
             # print(f"MESSAGE: {message.content}")
             inner_message = ''
             for match in re.findall(id_pattern, message.content):
                 # print(f"Match: {match}")
-                message.content = re.sub(match, await self.resolve_user_id(match[2:-1], client), message.content)
+                username = await KlatreGPT.resolve_user_id(match[2:-1], client, channel)
+                message.content = re.sub(match, username, message.content)
                 # print(message.content)
             messages = f"\"{message.author.display_name}: {message.content}\"\n" + messages
         # print('Retrieved history')
@@ -61,6 +65,21 @@ class KlatreGPT:
         return messages
 
     @staticmethod
-    async def resolve_user_id(user_id, client):
-        user = await client.fetch_user(user_id)
-        return user.display_name
+    def get_name(member):
+        if not member.nick is None:
+            return member.nick
+        if not member.global_name is None:
+            return member.global_name
+        return member.name
+
+    @staticmethod
+    async def resolve_user_id(user_id, client, channel):
+        user = channel.guild.get_member(int(user_id))
+        if user is None:  # This happens if you are talking about a discord user that is not on the current server.
+            discord_user = client.get_user(int(user_id))
+            if (discord_user is None):
+                # f"Cannot resolve {user_id}"
+                return 'Ukendt'
+            else:
+                return discord_user.display_name
+        return KlatreGPT.get_name(user)
