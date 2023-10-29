@@ -13,7 +13,16 @@ copenhagen = pytz.timezone('Europe/Copenhagen')
 def getMomentStyleFromSeconds(totalSeconds):
     minutes, seconds = divmod(totalSeconds, 60)
     hours, minutes = divmod(minutes, 60)
-    return "%d timer %02d minuter %02d sekunder" % (hours, minutes, seconds)
+
+    hours_text = 'time' if hours == 1 else 'timer'
+    minutes_text = 'minut' if minutes == 1 else 'minutter'
+    seconds_text = 'sekund' if seconds == 1 else 'sekunder'
+
+    final_text = '' if hours == 0 else f"{hours:.0f} {hours_text} "
+    final_text += '' if hours == 0 and minutes == 0 else f"{minutes:.0f} {minutes_text} "
+    final_text += '' if seconds == 0 else f"{seconds:.0f} {seconds_text}"
+
+    return final_text
 
 
 def whereTheFuckIsPelle(debug=0):
@@ -50,7 +59,7 @@ def whereTheFuckIsPelle(debug=0):
             parse(event['end']['dateTime']))
         now = copenhagen.localize(datetime.datetime.now())
         if debug:
-            now = copenhagen.localize(parse("2023-10-28T16:20:00"))
+            now = copenhagen.localize(parse("2023-10-29T22:20:00"))
         currentDistance = (start - now).total_seconds()
         if (lastDistance > currentDistance and currentDistance > 0):
             lastDistance = currentDistance
@@ -79,6 +88,8 @@ def whereTheFuckIsPelle(debug=0):
     end = pytz.timezone(event['end']['timezone']).localize(
         parse(event['end']['dateTime']))
     now = copenhagen.localize(datetime.datetime.now())
+    if debug:
+        now = copenhagen.localize(parse("2023-10-29T23:28:59"))
     sekunderTilEnd = getMomentStyleFromSeconds((end - now).total_seconds())
 
     outputString += f" færdig om {sekunderTilEnd}"
