@@ -11,6 +11,19 @@ from PIL import Image
 from pelleService import whereTheFuckIsPelle
 from KlatreGPT import KlatreGPT
 import subprocess
+import argparse
+parser = argparse.ArgumentParser(
+    description="Et script til at læse navngivne argumenter fra kommandolinjen.")
+
+# Tilføj de navngivne argumenter, du vil læse
+parser.add_argument("--discordkey", type=str, help="Discord key")
+parser.add_argument("--openaikey", type=str, help="OpenAI key")
+
+args = parser.parse_args()
+
+# Gem de læste argumenter i variabler
+discordkey = args.discordkey
+openaikey = args.openaikey
 
 client = discord.Client(intents=discord.Intents.all())
 DISCORD_CHANNEL_ID = 1003718776430268588
@@ -19,7 +32,8 @@ pattern = r".*(det\skan\sman\s(\w+\s)?ik).*"
 timeout = []
 Magnus = 229599553953726474
 startTime = datetime.datetime.now()
-KGPT = KlatreGPT(sys.argv[2])
+KGPT = KlatreGPT(openaikey)
+
 
 def get_random_svar():
     svar = [
@@ -126,7 +140,12 @@ async def go_to_bed(message):
 
 async def proompt(q, channel):
     recent_messages = await KGPT.get_recent_messages(channel, client)
-    return KGPT.prompt_gpt(recent_messages, q)
+    response_msg = KGPT.prompt_gpt(recent_messages, q)
+    if response_msg[1:] == '"' and response_msg[:1] == '"':
+        response_msg = response_msg[1:-1]
+    if response_msg.startswith('KlatreBot:'):
+        response_msg = response_msg[11:0]
+    return response_msg
 
 
 @client.event
@@ -165,10 +184,13 @@ async def on_message(message):
         else:
             msg = await proompt(message_content, message.channel.id)
             await message.channel.send(msg)
-    if message.content.startswith('!lortebot') \
+
+    if message.content.startswith('!aitest') \
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
             and message.author != client.user:  # Test is not itself
-        await send_and_track_klatretid_message(DISCORD_SANDBOX_CHANNEL_ID)
+        message_content = message.content[7:].strip()
+        msg = await proompt(message_content, message.channel.id)
+        await message.channel.send(msg)
 
     if message.content.startswith('!debug') \
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
@@ -270,5 +292,4 @@ async def on_message(message):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
 
-client.run(sys.argv[1])
-
+client.run(discordkey)
