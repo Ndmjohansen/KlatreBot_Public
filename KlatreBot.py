@@ -174,6 +174,8 @@ async def on_reaction_add(reaction, user):
 @client.event
 async def on_message(message):
     if message.content.lower()[0:9] == 'klatregpt' and message.content[-1] == '?':
+        await message.channel.send("BEEP BOOP VENTER PÅ KONSULENTFIX @229599553953726474")
+        return
         # print("AVANCERET AI")
         message_content = message.content[9:].strip()
         if message_content.startswith(','):
