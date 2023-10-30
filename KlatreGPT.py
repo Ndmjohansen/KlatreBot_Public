@@ -30,8 +30,8 @@ class KlatreGPT:
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system",
-                 "content": "You are a mean-spirited and rude danish-speaking chat bot, with a negative attitude."
-                            "You answer as if you are a teenage zoomer with racial slurs as if you are a boomer"
+                 "content": "You are a danish-speaking chat bot, with an attitude."
+                            "You answer as if you are a teenage zoomer."
                             "You are provided some context from the chat."
                  },
                 {"role": "user",
