@@ -1,11 +1,12 @@
 import datetime
 import random
 import re
+from concurrent.futures import ThreadPoolExecutor
 import discord
+from discord.ext import commands
 import asyncio
 import requests
 import io
-import sys
 from KlatringAttendance import KlatringAttendance
 from PIL import Image
 from pelleService import whereTheFuckIsPelle
@@ -26,14 +27,13 @@ args = parser.parse_args()
 discordkey = args.discordkey
 openaikey = args.openaikey
 
-client = discord.Client(intents=discord.Intents.all())
+bot = commands.Bot(intents=discord.Intents.all(), command_prefix='!')
+# client = discord.Client(intents=discord.Intents.all())
 DISCORD_CHANNEL_ID = 1003718776430268588
 DISCORD_SANDBOX_CHANNEL_ID = 1049312345068933134
-pattern = r".*(det\skan\sman\s(\w+\s)?ik).*"
-timeout = []
-Magnus = 229599553953726474
 startTime = datetime.datetime.now()
 KGPT = KlatreGPT(openaikey)
+executor = ThreadPoolExecutor(max_workers=5)
 
 
 def get_random_svar():
@@ -56,7 +56,7 @@ def get_random_svar():
 
 async def error_logger(e: Exception, message_content="!!No message!!"):
     message_content = f"ERROR:\n{e}\n\nFROM MESSAGE:\n{message_content}"
-    await (client.get_channel(DISCORD_SANDBOX_CHANNEL_ID).send(message_content))
+    await (bot.get_channel(DISCORD_SANDBOX_CHANNEL_ID).send(message_content))
 
 
 def get_dates_of_week(year, week_number):
@@ -86,7 +86,7 @@ def number_of_weeks(year):
 
 async def send_and_track_klatretid_message(channel):
     # Send the message to the specified text channel
-    channel = client.get_channel(channel)
+    channel = bot.get_channel(channel)
     KlatringAttendance().reset()
     lastReactToMessage = await channel.send(embed=KlatringAttendance().get_embed())
     KlatringAttendance().set_message(
@@ -98,30 +98,18 @@ async def send_and_track_klatretid_message(channel):
 async def send_message_at_time():
     # Wait until the specified time
     while True:
-        # Get the current time and day of the week
-        now = datetime.datetime.now()
-        day_of_week = now.weekday()
+        if bot.is_ready():
+            # Get the current time and day of the week
+            now = datetime.datetime.now()
+            day_of_week = now.weekday()
 
-        # Only send a message on Monday and Thursday at 17:00
-        if day_of_week in [0, 3] and now.hour == 17:
-            await send_and_track_klatretid_message(DISCORD_CHANNEL_ID)
-            await asyncio.sleep(60 * 60 * 23)
+            # Only send a message on Monday and Thursday at 17:00
+            if day_of_week in [0, 3] and now.hour == 17:
+                await send_and_track_klatretid_message(DISCORD_CHANNEL_ID)
+                await asyncio.sleep(60 * 60 * 23)
 
         # Wait for one minute before checking the time again
         await asyncio.sleep(60)
-
-
-async def timeout_user_by_id(id, time_in_sec):
-    timeout.append(id)
-    timestamp_start = datetime.datetime.now()
-    print(f"timeout {id} for {time_in_sec}")
-    while id in timeout:
-        time_passed_sec = (datetime.datetime.now() - timestamp_start).seconds
-        # print(f"{id} is on timeout for {time_passed_sec}")
-        if time_passed_sec > time_in_sec:
-            timeout.remove(id)
-        await asyncio.sleep(1)
-    print(f"{id} unbanned, timeout table = {timeout}")
 
 
 async def jpeg(url):
@@ -133,7 +121,6 @@ async def jpeg(url):
             im = im.convert('RGB')
             im.thumbnail((650, 650))
             im.save(byte_IO, format="JPEG", quality=1, optimize=True)
-            # byteimg = Image.open(byte_IO)
             byte_IO.seek(0)
             return byte_IO
 
@@ -141,34 +128,18 @@ async def jpeg(url):
 async def go_to_bed(message):
     await asyncio.sleep(60 * 15)
     if str(message.guild.get_member(message.author.id).status) == 'online':
-        await client.get_channel(message.channel.id).send(f'Gå i seng <@{message.author.id}>')
+        await bot.get_channel(message.channel.id).send(f'Gå i seng <@{message.author.id}>')
 
 
-async def proompt(q, channel):
-    recent_messages = await KGPT.get_recent_messages(channel, client)
-    response_msg = KGPT.prompt_gpt(recent_messages, q)
-    if response_msg[1:] == '"' and response_msg[:1] == '"':
-        response_msg = response_msg[1:-1]
-    if response_msg.startswith('KlatreBot:'):
-        response_msg = response_msg[11:0]
-    return response_msg
-
-
-@client.event
+@bot.event
 async def on_ready():
-    # Start the send_message_at_time function when the bot connects to Discord
-    tasks = asyncio.all_tasks()
-    coro_names = []
-    for task in tasks:
-        coro_names.append(task.get_coro().__name__)
-    if 'send_message_at_time' not in coro_names:
-        print('Task not running, starting task')
-        client.loop.create_task(send_message_at_time())
+    # Things to do when connecting
+    print("(Re)connected to discord!")
 
 
-@client.event
+@bot.event
 async def on_reaction_add(reaction, user):
-    if reaction.message.author == client.user and client.user != user and reaction.message == KlatringAttendance().message:
+    if reaction.message.author == bot.user and bot.user != user and reaction.message == KlatringAttendance().message:
         if reaction.emoji == "✅":
             KlatringAttendance().add_attendee(user)
         elif reaction.emoji == "❌":
@@ -177,40 +148,78 @@ async def on_reaction_add(reaction, user):
         await reaction.message.edit(embed=KlatringAttendance().get_embed())
 
 
-@client.event
-async def on_message(message):
-    # We don't want to interact with bots
-    if message.author.bot: return
-    if message.content.lower()[0:9] == 'klatregpt':
-        # await message.channel.send("BEEP BOOP VENTER PÅ KONSULENTFIX <@229599553953726474>")
-        # return
-        # print("AVANCERET AI")
-        message_content = message.content[9:].strip()
-        try:
-            if message_content.startswith(','):
-                inner = message_content.lstrip(',').strip()
-                print(inner)
-                msg = await proompt(inner, message.channel.id)
-                await message.channel.send(msg)
-            else:
-                msg = await proompt(message_content, message.channel.id)
-                await message.channel.send(msg)
-        except Exception as e:
-            await error_logger(e, message_content)
+@bot.command()
+async def gpt(ctx):
+    loop = asyncio.get_event_loop()
+    context_msgs = await KGPT.get_recent_messages(ctx.channel.id, bot)
+    response_msg = await loop.run_in_executor(executor, KGPT.prompt_gpt, context_msgs, ctx.message.content[4:])
+    if response_msg[1:] == '"' and response_msg[:1] == '"':
+        response_msg = response_msg[1:-1]
+    if response_msg.startswith('KlatreBot:'):
+        response_msg = response_msg[11:0]
+    await ctx.reply(response_msg)
 
-    if message.content.startswith('!aitest') \
-            and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
-            and message.author != client.user:  # Test is not itself
-        message_content = message.content[7:].strip()
-        msg = await proompt(message_content, message.channel.id)
-        await message.channel.send(msg)
 
-    if message.content.startswith('!debug') \
-            and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
-            and not message.author.bot \
-            and message.author != client.user:  # Test is not itself
-        await message.channel.send(message.content)
+@bot.command()
+async def glar(ctx):
+    now = datetime.datetime.now()
+    day_of_week = now.weekday()
+    if 0 <= datetime.datetime.now().hour < 10:
+        await ctx.send(f'Det er vist over din sengetid {ctx.message.author.name}')
+        bot.loop.create_task(go_to_bed(ctx.message))
+    elif day_of_week in [0, 3] and now.hour < 17:
+        await ctx.send('Ro på kaptajn, folket er på arbejde')
+    else:
+        await ctx.send('@everyone Hva sker der? er i.. er i glar?')
+        await ctx.send('https://imgur.com/CnRFnel')
 
+
+@bot.command()  # Following does not work for some reason (aliases='jpeg')
+async def jpg(ctx):
+    # message parsing
+    words = ctx.message.content.split()
+    if len(words) == 2 and words[1][-4:] in [".jpg", "jpeg", ".png"]:
+        # await message.channel.send(f"Word count: {len(words)}, URL: {words[1]}, TEST1: {words[1][-4:]}")
+        image = await jpeg(words[1])
+        await ctx.send(file=discord.File(fp=image, filename="jaypeg.jpg"))
+
+
+@bot.command()
+async def pelle(ctx):
+    await ctx.send(whereTheFuckIsPelle())
+
+
+@bot.command()
+async def uptime(ctx):
+    totalUptimeSeconds = (datetime.datetime.now() -
+                          startTime).total_seconds()
+    prettyUptime = "{:0>8}".format(
+        str(datetime.timedelta(seconds=totalUptimeSeconds)))
+    gitHash = subprocess.check_output(
+        ['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+    await ctx.send(
+        f"Jeg har kørt i {prettyUptime} på version https://github.com/Ndmjohansen/KlatreBot_Public/commit/{gitHash}")
+
+
+@bot.command()
+async def ugenr(ctx):
+    await ctx.send(f"Vi er i uge {datetime.datetime.today().isocalendar()[1]}")
+
+
+@bot.command()
+async def beep(ctx):
+    # print(ctx.channel.id)
+    # print(ctx.message.content)
+    await ctx.send('boop')
+
+
+@bot.event
+async def on_message(message):  # used for searching for substrings
+    # Vi vil ikke reagere på bots
+    if message.author.bot:
+        return
+
+    # Ugenr
     matches = re.findall(r'uge\s\d{1,2}', message.content.lower())
     if len(matches) >= 1 and not message.author.id == 1049311574638202950:
         weeks_in_year = number_of_weeks(datetime.datetime.now().year)
@@ -232,78 +241,32 @@ async def on_message(message):
             final_string = " - ".join(send_string_list)
             await message.channel.send(final_string)
 
-    if message.content.startswith('!ugenr'):
-        await message.channel.send(f"Vi er i uge {datetime.datetime.today().isocalendar()[1]}")
-
+    # Downus
     if message.content.startswith('!downus') or 'fail' in message.content:
         await message.channel.send(f"https://cdn.discordapp.com/attachments"
                                    f"/1003718776430268588/1153668006728192101/downus_on_wall.gif")
 
-    if message.content.startswith('!timeout') and not message.author.id == Magnus:
-        words = message.content.split()
-        if len(words) == 2 and words[1] == 'clear' and message.author.id not in timeout:
-            await message.channel.send(f"Alle kriminelle er løsladte")
-            timeout.clear()
-        elif len(words) == 3 and int(words[2]) < 600:
-            await message.channel.send(f"{words[1]} på timeout i {words[2]} sekunder, ingen glar til dig")
-            await timeout_user_by_id(int(words[1]), int(words[2]))
-        elif len(words) == 3 and int(words[2]) > 600:
-            await message.channel.send(f"Måske {words[2]} sekunder er lige i overkanten, kaptajn")
-
-    if message.content.startswith('!jpg') or message.content.startswith('!jpeg'):
-        # message parsing
-        words = message.content.split()
-        if len(words) == 2 and words[1][-4:] in [".jpg", "jpeg", ".png"]:
-            # await message.channel.send(f"Word count: {len(words)}, URL: {words[1]}, TEST1: {words[1][-4:]}")
-            image = await jpeg(words[1])
-            await message.channel.send(file=discord.File(fp=image, filename="jaypeg.jpg"))
-
-    if message.content.startswith('!pelle'):
-        await message.channel.send(whereTheFuckIsPelle())
-
-    if message.content.startswith('!uptime'):
-        totalUptimeSeconds = (datetime.datetime.now() -
-                              startTime).total_seconds()
-        prettyUptime = "{:0>8}".format(
-            str(datetime.timedelta(seconds=totalUptimeSeconds)))
-        gitHash = subprocess.check_output(
-            ['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
-        await message.channel.send(
-            f"Jeg har kørt i {prettyUptime} på version https://github.com/Ndmjohansen/KlatreBot_Public/commit/{gitHash}")
-
-    if message.content.startswith('!pelle_debug'):
-        await message.channel.send(whereTheFuckIsPelle(1))
-
-    if message.content.startswith('!say') and message.channel.id == 1049312345068933134:
-        channel = client.get_channel(DISCORD_CHANNEL_ID)
-        message_to_send = message.content[4:].strip()
-        if not len(message_to_send) == 0:
-            print(f"message is: {len(message_to_send)} and being sent")
-            await channel.send(message_to_send)
-
+    # KlatreBot?
     if message.content.lower()[0:9] == 'klatrebot' and message.content[-1] == '?':
         await message.channel.send(get_random_svar())
 
-    if '!glar' in message.content and not message.content.startswith('!glar') and message.author.id not in timeout:
+    # Glar?
+    if '!glar' in message.content and not message.content.startswith('!glar'):
         await message.channel.send('https://imgur.com/CnRFnel')
 
-    if message.content.startswith('!glar') and message.author.id not in timeout:
-        now = datetime.datetime.now()
-        day_of_week = now.weekday()
-        if 0 <= datetime.datetime.now().hour < 10:
-            await message.channel.send(f'Det er vist over din sengetid {message.author.name}')
-            client.loop.create_task(go_to_bed(message))
-        # elif day_of_week in [0, 3] and now.hour < 17:
-        # await message.channel.send('Ro på kaptajn, folket er på arbejde')
-        else:
-            await message.channel.send('@everyone Hva sker der? er i.. er i glar?')
-            await message.channel.send('https://imgur.com/CnRFnel')
-
-    # Pelle
-    msg = message.content.lower()
-    if re.search(pattern, msg):
+    # Det kan man jo ikke det der
+    pattern = r".*(det\skan\sman\s(\w+\s)?ik).*"
+    if re.search(pattern, message.content.lower()):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
 
+    # Krævet for ikke at blocke @bot.command listeners
+    await bot.process_commands(message)
 
-client.run(discordkey)
+
+@bot.event
+async def setup_hook():
+    bot.loop.create_task(send_message_at_time())
+
+if __name__ == "__main__":
+    bot.run(discordkey)
