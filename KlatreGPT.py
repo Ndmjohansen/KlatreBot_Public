@@ -25,7 +25,7 @@ class KlatreGPT:
     def prompt_gpt(self, prompt_context, prompt_question):
         if self.is_rate_limited():
             return 'Nu slapper du fandme lige lidt af med de spørgsmål'
-
+        print('Sending prompt to OpenAI')
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -33,19 +33,20 @@ class KlatreGPT:
                  "content": "You are a danish-speaking chat bot, with an edgy attitude."
                             "You answer as if you are a teenage zoomer."
                             "You are provided some context from the chat."
+                            "Limit your answers to 60 words or less."
                  },
                 {"role": "user",
                  "content": f"CONTEXT:\n{prompt_context}QUESTION: {prompt_question}"
                  }
             ]
         )
-        print(
-            f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
+        #print(f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
         returnval = response['choices'][0]['message']['content']
         print(f"Result from OpenAI: {returnval}")
         return returnval
 
-    async def get_recent_messages(self, channel_id, client):
+    @staticmethod
+    async def get_recent_messages(channel_id, client):
         id_pattern = r"<@\d*>"
         messages = ''
         channel = client.get_channel(channel_id)
@@ -58,7 +59,7 @@ class KlatreGPT:
                 message.content = re.sub(match, username, message.content)
                 # print(message.content)
             messages = f"\"{message.author.display_name}: {message.content}\"\n" + messages
-        # print('Retrieved history')
+        print('Retrieved history')
         # print(messages)
         return messages
 
@@ -75,7 +76,7 @@ class KlatreGPT:
         user = channel.guild.get_member(int(user_id))
         if user is None:  # This happens if you are talking about a discord user that is not on the current server.
             discord_user = client.get_user(int(user_id))
-            if (discord_user is None):
+            if discord_user is None:
                 # f"Cannot resolve {user_id}"
                 return 'Ukendt'
             else:

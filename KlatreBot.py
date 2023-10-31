@@ -12,6 +12,7 @@ from pelleService import whereTheFuckIsPelle
 from KlatreGPT import KlatreGPT
 import subprocess
 import argparse
+import threading
 
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
@@ -144,14 +145,14 @@ async def go_to_bed(message):
         await client.get_channel(message.channel.id).send(f'Gå i seng <@{message.author.id}>')
 
 
-async def proompt(q, channel):
-    recent_messages = await KGPT.get_recent_messages(channel, client)
+async def proompt(q, channel, recent_messages):
     response_msg = KGPT.prompt_gpt(recent_messages, q)
     if response_msg[1:] == '"' and response_msg[:1] == '"':
         response_msg = response_msg[1:-1]
     if response_msg.startswith('KlatreBot:'):
         response_msg = response_msg[11:0]
-    return response_msg
+    await client.get_channel(channel).send(response_msg)
+
 
 
 @client.event
@@ -181,20 +182,18 @@ async def on_reaction_add(reaction, user):
 async def on_message(message):
     # We don't want to interact with bots
     if message.author.bot: return
-    if message.content.lower()[0:9] == 'klatregpt':
+    if message.content.lower()[0:9] == 'klatregpg':
         # await message.channel.send("BEEP BOOP VENTER PÅ KONSULENTFIX <@229599553953726474>")
         # return
         # print("AVANCERET AI")
         message_content = message.content[9:].strip()
         try:
             if message_content.startswith(','):
-                inner = message_content.lstrip(',').strip()
-                print(inner)
-                msg = await proompt(inner, message.channel.id)
-                await message.channel.send(msg)
-            else:
-                msg = await proompt(message_content, message.channel.id)
-                await message.channel.send(msg)
+                message_content = message_content.lstrip(',').strip()
+            recents = await KGPT.get_recent_messages(message.channel.id, client)
+            print('STARTING TASK')
+            client.loop.create_task(proompt(message_content, message.channel.id, recents))
+            print('TASK STARTED')
         except Exception as e:
             await error_logger(e, message_content)
 
@@ -304,6 +303,7 @@ async def on_message(message):
     if re.search(pattern, msg):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
+    print('Done responding to message')
 
 
 client.run(discordkey)
