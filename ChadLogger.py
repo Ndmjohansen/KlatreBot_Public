@@ -22,7 +22,7 @@ class ChadLogger:
         self.log.append(LogEntry(message, details))
 
     def query_logs(self):
-        return "\n".join([f"{index}: {x.message}" for index, x in enumerate(self.log[:10])])
+        return "\n".join([f"{index}: {x.message}" for index, x in enumerate(self.log[-10:])])
 
     def clear_logs(self):
         self.log = []
