@@ -98,14 +98,15 @@ async def send_and_track_klatretid_message(channel):
 async def send_message_at_time():
     # Wait until the specified time
     while True:
-        # Get the current time and day of the week
-        now = datetime.datetime.now()
-        day_of_week = now.weekday()
+        if bot.is_ready():
+            # Get the current time and day of the week
+            now = datetime.datetime.now()
+            day_of_week = now.weekday()
 
-        # Only send a message on Monday and Thursday at 17:00
-        if day_of_week in [0, 3] and now.hour == 17:
-            await send_and_track_klatretid_message(DISCORD_CHANNEL_ID)
-            await asyncio.sleep(60 * 60 * 23)
+            # Only send a message on Monday and Thursday at 17:00
+            if day_of_week in [0, 3] and now.hour == 17:
+                await send_and_track_klatretid_message(DISCORD_CHANNEL_ID)
+                await asyncio.sleep(60 * 60 * 23)
 
         # Wait for one minute before checking the time again
         await asyncio.sleep(60)
@@ -132,14 +133,8 @@ async def go_to_bed(message):
 
 @bot.event
 async def on_ready():
-    # Start the send_message_at_time function when the bot connects to Discord
-    tasks = asyncio.all_tasks()
-    coro_names = []
-    for task in tasks:
-        coro_names.append(task.get_coro().__name__)
-    if 'send_message_at_time' not in coro_names:
-        print('Task not running, starting task')
-        bot.loop.create_task(send_message_at_time())
+    # Things to do when connecting
+    print("(Re)connected to discord!")
 
 
 @bot.event
@@ -221,7 +216,8 @@ async def beep(ctx):
 @bot.event
 async def on_message(message):  # used for searching for substrings
     # Vi vil ikke reagere på bots
-    if message.author.bot: return
+    if message.author.bot:
+        return
 
     # Ugenr
     matches = re.findall(r'uge\s\d{1,2}', message.content.lower())
@@ -268,4 +264,9 @@ async def on_message(message):  # used for searching for substrings
     await bot.process_commands(message)
 
 
-bot.run(discordkey)
+@bot.event
+async def setup_hook():
+    bot.loop.create_task(send_message_at_time())
+
+if __name__ == "__main__":
+    bot.run(discordkey)
