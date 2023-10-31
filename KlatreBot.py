@@ -12,7 +12,6 @@ from pelleService import whereTheFuckIsPelle
 from KlatreGPT import KlatreGPT
 import subprocess
 import argparse
-
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
 
@@ -52,11 +51,6 @@ def get_random_svar():
         "Mit svar er nej",
     ]
     return random.choice(svar)
-
-
-async def error_logger(e: Exception, message_content="!!No message!!"):
-    message_content = f"ERROR:\n{e}\n\nFROM MESSAGE:\n{message_content}"
-    await (client.get_channel(DISCORD_SANDBOX_CHANNEL_ID).send(message_content))
 
 
 def get_dates_of_week(year, week_number):
@@ -179,24 +173,19 @@ async def on_reaction_add(reaction, user):
 
 @client.event
 async def on_message(message):
-    # We don't want to interact with bots
-    if message.author.bot: return
-    if message.content.lower()[0:9] == 'klatregpt':
-        # await message.channel.send("BEEP BOOP VENTER PÅ KONSULENTFIX <@229599553953726474>")
-        # return
+    if message.content.lower()[0:9] == 'klatregpt' and message.content[-1] == '?':
+        await message.channel.send("BEEP BOOP VENTER PÅ KONSULENTFIX <@229599553953726474>")
+        return
         # print("AVANCERET AI")
         message_content = message.content[9:].strip()
-        try:
-            if message_content.startswith(','):
-                inner = message_content.lstrip(',').strip()
-                print(inner)
-                msg = await proompt(inner, message.channel.id)
-                await message.channel.send(msg)
-            else:
-                msg = await proompt(message_content, message.channel.id)
-                await message.channel.send(msg)
-        except Exception as e:
-            await error_logger(e, message_content)
+        if message_content.startswith(','):
+            inner = message_content.lstrip(',').strip()
+            print(inner)
+            msg = await proompt(inner, message.channel.id)
+            await message.channel.send(msg)
+        else:
+            msg = await proompt(message_content, message.channel.id)
+            await message.channel.send(msg)
 
     if message.content.startswith('!aitest') \
             and message.channel.id == DISCORD_SANDBOX_CHANNEL_ID \
@@ -304,6 +293,5 @@ async def on_message(message):
     if re.search(pattern, msg):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
-
 
 client.run(discordkey)
