@@ -40,10 +40,10 @@ class KlatreGPT:
                  }
             ]
         )
-        #print(f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
-        returnval = response['choices'][0]['message']['content']
-        print(f"Result from OpenAI: {returnval}")
-        return returnval
+        # print(f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
+        return_value = response['choices'][0]['message']['content']
+        print(f"Result from OpenAI: {return_value}")
+        return return_value
 
     @staticmethod
     async def get_recent_messages(channel_id, client):
@@ -59,7 +59,7 @@ class KlatreGPT:
                 message.content = re.sub(match, username, message.content)
                 # print(message.content)
             messages = f"\"{message.author.display_name}: {message.content}\"\n" + messages
-        print('Retrieved history')
+        # print('Retrieved history')
         # print(messages)
         return messages
 
@@ -72,7 +72,7 @@ class KlatreGPT:
         return member.name
 
     @staticmethod
-    async def resolve_user_id(user_id, client, channel):
+    def resolve_user_id(user_id, client, channel):
         user = channel.guild.get_member(int(user_id))
         if user is None:  # This happens if you are talking about a discord user that is not on the current server.
             discord_user = client.get_user(int(user_id))
