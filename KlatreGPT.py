@@ -1,6 +1,7 @@
 import openai
 import re
 import datetime
+from ChadLogger import ChadLogger
 
 
 class KlatreGPT:
@@ -14,7 +15,7 @@ class KlatreGPT:
         self.timestamps.append(new_stamp)
         for timestamp in self.timestamps:
             timediff = round((new_stamp - timestamp).total_seconds())
-            # print(f"time diff {round((new_stamp - timestamp).total_seconds())}")
+            # ChadLogger.log(f"time diff {round((new_stamp - timestamp).total_seconds())}")
             if timediff >= 1800:
                 self.timestamps.remove(timestamp)
         if len(self.timestamps) < 30:
@@ -25,14 +26,14 @@ class KlatreGPT:
     def prompt_gpt(self, prompt_context, prompt_question):
         if self.is_rate_limited():
             return 'Nu slapper du fandme lige lidt af med de spørgsmål'
-        print('Sending prompt to OpenAI')
+        ChadLogger.log('Sending prompt to OpenAI')
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system",
                      "content": "You are a danish-speaking chat bot, with an edgy attitude."
-                     "You answer as if you are a teenage zoomer."
+                                "You answer as if you are a teenage zoomer."
                                 "You are provided some context from the chat."
                                 "Limit your answers to 60 words or less."
                      },
@@ -41,12 +42,12 @@ class KlatreGPT:
                      }
                 ]
             )
-            print(
+            ChadLogger.log(
                 f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
             return_value = response['choices'][0]['message']['content']
         except Exception as e:
             return_value = f"Det kan jeg desværre ikke svare på. ({e})"
-        print(f"Result from OpenAI: {return_value}")
+        ChadLogger.log(f"Result from OpenAI: {return_value}")
         return return_value
 
     @staticmethod
@@ -55,17 +56,17 @@ class KlatreGPT:
         messages = ''
         channel = client.get_channel(channel_id)
         async for message in channel.history(limit=5):
-            # print(f"MESSAGE: {message.content}")
+            # ChadLogger.log(f"MESSAGE: {message.content}")
             inner_message = ''
             for match in re.findall(id_pattern, message.content):
-                # print(f"Match: {match}")
+                # ChadLogger.log(f"Match: {match}")
                 username = KlatreGPT.resolve_user_id(
                     match[2:-1], client, channel)
                 message.content = re.sub(match, username, message.content)
-                # print(message.content)
+                # ChadLogger.log(message.content)
             messages = f"\"{message.author.display_name}: {message.content}\"\n" + messages
-        # print('Retrieved history')
-        # print(messages)
+        # ChadLogger.log('Retrieved history')
+        # ChadLogger.log(messages)
         return messages
 
     @staticmethod

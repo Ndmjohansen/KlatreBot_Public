@@ -1,6 +1,7 @@
 import datetime
 import random
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor
 import discord
 from discord.ext import commands
@@ -13,6 +14,8 @@ from pelleService import whereTheFuckIsPelle
 from KlatreGPT import KlatreGPT
 import subprocess
 import argparse
+from ChadLogger import ChadLogger
+
 
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
@@ -134,7 +137,7 @@ async def go_to_bed(message):
 @bot.event
 async def on_ready():
     # Things to do when connecting
-    print("(Re)connected to discord!")
+    ChadLogger.log("(Re)connected to discord!")
 
 
 @bot.event
@@ -208,9 +211,20 @@ async def ugenr(ctx):
 
 @bot.command()
 async def beep(ctx):
-    # print(ctx.channel.id)
-    # print(ctx.message.content)
-    await ctx.send('boop')
+    # ChadLogger.log(ctx.channel.id)
+    # ChadLogger.log(ctx.message.content)
+    await ctx.send(f'boop {1/0}')
+
+
+@bot.command()
+async def logs(ctx):
+    if isinstance(ctx.channel, discord.DMChannel):
+        await ctx.channel.send(ChadLogger().query_logs())
+@bot.command()
+async def logs(ctx):
+    if isinstance(ctx.channel, discord.DMChannel):
+        ChadLogger().clear_logs()
+        await ctx.channel.send("Logs cleared!")
 
 
 @bot.event
@@ -218,7 +232,6 @@ async def on_message(message):  # used for searching for substrings
     # Vi vil ikke reagere på bots
     if message.author.bot:
         return
-
     # Ugenr
     matches = re.findall(r'uge\s\d{1,2}', message.content.lower())
     if len(matches) >= 1 and not message.author.id == 1049311574638202950:
@@ -268,5 +281,12 @@ async def on_message(message):  # used for searching for substrings
 async def setup_hook():
     bot.loop.create_task(send_message_at_time())
 
+
+async def on_command_error(ctx: commands.Context, error):
+    print(f'Ignoring exception in command {ctx.command}:', file=sys.stderr)
+    ChadLogger().log_exception(
+        type(error), error, error.__traceback__)
+
 if __name__ == "__main__":
+    bot.on_command_error = on_command_error
     bot.run(discordkey)
