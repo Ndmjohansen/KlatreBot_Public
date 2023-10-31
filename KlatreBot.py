@@ -220,8 +220,10 @@ async def beep(ctx):
 async def logs(ctx):
     if isinstance(ctx.channel, discord.DMChannel):
         await ctx.channel.send(ChadLogger().query_logs())
+
+
 @bot.command()
-async def logs(ctx):
+async def clear(ctx):
     if isinstance(ctx.channel, discord.DMChannel):
         ChadLogger().clear_logs()
         await ctx.channel.send("Logs cleared!")
