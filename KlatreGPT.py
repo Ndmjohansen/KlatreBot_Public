@@ -40,7 +40,7 @@ class KlatreGPT:
                  }
             ]
         )
-        # print(f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
+        print(f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
         return_value = response['choices'][0]['message']['content']
         print(f"Result from OpenAI: {return_value}")
         return return_value

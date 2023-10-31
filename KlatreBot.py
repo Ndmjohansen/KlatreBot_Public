@@ -162,7 +162,7 @@ async def gpt(ctx):
         response_msg = response_msg[1:-1]
     if response_msg.startswith('KlatreBot:'):
         response_msg = response_msg[11:0]
-    await ctx.send(response_msg)
+    await ctx.reply(response_msg)
 
 
 @bot.command()
@@ -213,8 +213,8 @@ async def ugenr(ctx):
 
 @bot.command()
 async def beep(ctx):
-    print(ctx.channel.id)
-    print(ctx.message.content)
+    # print(ctx.channel.id)
+    # print(ctx.message.content)
     await ctx.send('boop')
 
 
