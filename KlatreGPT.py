@@ -26,22 +26,26 @@ class KlatreGPT:
         if self.is_rate_limited():
             return 'Nu slapper du fandme lige lidt af med de spørgsmål'
         print('Sending prompt to OpenAI')
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system",
-                 "content": "You are a danish-speaking chat bot, with an edgy attitude."
-                            "You answer as if you are a teenage zoomer."
-                            "You are provided some context from the chat."
-                            "Limit your answers to 60 words or less."
-                 },
-                {"role": "user",
-                 "content": f"CONTEXT:\n{prompt_context}QUESTION: {prompt_question}"
-                 }
-            ]
-        )
-        print(f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
-        return_value = response['choices'][0]['message']['content']
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system",
+                     "content": "You are a danish-speaking chat bot, with an edgy attitude."
+                     "You answer as if you are a teenage zoomer."
+                                "You are provided some context from the chat."
+                                "Limit your answers to 60 words or less."
+                     },
+                    {"role": "user",
+                     "content": f"CONTEXT:\n{prompt_context}QUESTION: {prompt_question}"
+                     }
+                ]
+            )
+            print(
+                f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
+            return_value = response['choices'][0]['message']['content']
+        except Exception as e:
+            return_value = f"Det kan jeg desværre ikke svare på. ({e})"
         print(f"Result from OpenAI: {return_value}")
         return return_value
 
@@ -55,7 +59,8 @@ class KlatreGPT:
             inner_message = ''
             for match in re.findall(id_pattern, message.content):
                 # print(f"Match: {match}")
-                username = KlatreGPT.resolve_user_id(match[2:-1], client, channel)
+                username = KlatreGPT.resolve_user_id(
+                    match[2:-1], client, channel)
                 message.content = re.sub(match, username, message.content)
                 # print(message.content)
             messages = f"\"{message.author.display_name}: {message.content}\"\n" + messages

@@ -152,7 +152,7 @@ async def on_reaction_add(reaction, user):
 async def gpt(ctx):
     loop = asyncio.get_event_loop()
     context_msgs = await KGPT.get_recent_messages(ctx.channel.id, bot)
-    response_msg = await loop.run_in_executor(executor, KGPT.prompt_gpt, context_msgs, ctx.message.content[4:])
+    response_msg = await loop.run_in_executor(executor, KGPT.prompt_gpt, context_msgs, ctx.message.content[5:])
     if response_msg[1:] == '"' and response_msg[:1] == '"':
         response_msg = response_msg[1:-1]
     if response_msg.startswith('KlatreBot:'):
