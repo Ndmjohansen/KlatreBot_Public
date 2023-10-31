@@ -55,7 +55,7 @@ class KlatreGPT:
             inner_message = ''
             for match in re.findall(id_pattern, message.content):
                 # print(f"Match: {match}")
-                username = await KlatreGPT.resolve_user_id(match[2:-1], client, channel)
+                username = KlatreGPT.resolve_user_id(match[2:-1], client, channel)
                 message.content = re.sub(match, username, message.content)
                 # print(message.content)
             messages = f"\"{message.author.display_name}: {message.content}\"\n" + messages
