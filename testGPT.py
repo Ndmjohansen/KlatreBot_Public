@@ -23,7 +23,6 @@ def inputargs():
 
 
 inputargs()
-print(openaikey)
 KGPT = KlatreGPT(openaikey)
 
 
