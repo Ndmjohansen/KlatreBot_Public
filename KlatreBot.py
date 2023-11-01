@@ -2,7 +2,6 @@ import datetime
 import random
 import re
 import sys
-from concurrent.futures import ThreadPoolExecutor
 import discord
 from discord.ext import commands
 import asyncio
@@ -36,7 +35,6 @@ DISCORD_CHANNEL_ID = 1003718776430268588
 DISCORD_SANDBOX_CHANNEL_ID = 1049312345068933134
 startTime = datetime.datetime.now()
 KlatreGPT().set_openai_key(openaikey)
-executor = ThreadPoolExecutor(max_workers=5)
 
 
 def get_random_svar():
@@ -102,7 +100,10 @@ async def gpt_response_poster():
     while True:
         if bot.is_ready():
             t = await SlaveLabour.ElaborateQueueSystem().result_queue.get()
+            while not bot.is_ready():
+                await asyncio.sleep(1)
             await t.context.reply(t.return_text)
+
         else:
             await asyncio.sleep(1)
 
@@ -161,7 +162,7 @@ async def on_reaction_add(reaction, user):
 
 
 @bot.command()
-async def chd(ctx):
+async def gpt(ctx):
     context_msgs = await KlatreGPT.get_recent_messages(ctx.channel.id, bot)
     await SlaveLabour.ElaborateQueueSystem().task_queue.put(
         SlaveLabour.GPTTask(ctx, context_msgs))
