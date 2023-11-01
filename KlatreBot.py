@@ -15,7 +15,7 @@ from KlatreGPT import KlatreGPT
 import subprocess
 import argparse
 from ChadLogger import ChadLogger
-
+import SlaveLabour
 
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
@@ -35,7 +35,7 @@ bot = commands.Bot(intents=discord.Intents.all(), command_prefix='!')
 DISCORD_CHANNEL_ID = 1003718776430268588
 DISCORD_SANDBOX_CHANNEL_ID = 1049312345068933134
 startTime = datetime.datetime.now()
-KGPT = KlatreGPT(openaikey)
+KlatreGPT().set_openai_key(openaikey)
 executor = ThreadPoolExecutor(max_workers=5)
 
 
@@ -98,6 +98,15 @@ async def send_and_track_klatretid_message(channel):
     await lastReactToMessage.add_reaction("❌")
 
 
+async def gpt_response_poster():
+    while True:
+        if bot.is_ready():
+            t = await SlaveLabour.ElaborateQueueSystem().result_queue.get()
+            await t.context.reply(t.return_text)
+        else:
+            await asyncio.sleep(1)
+
+
 async def send_message_at_time():
     # Wait until the specified time
     while True:
@@ -152,15 +161,10 @@ async def on_reaction_add(reaction, user):
 
 
 @bot.command()
-async def gpt(ctx):
-    loop = asyncio.get_event_loop()
-    context_msgs = await KGPT.get_recent_messages(ctx.channel.id, bot)
-    response_msg = await loop.run_in_executor(executor, KGPT.prompt_gpt, context_msgs, ctx.message.content[5:])
-    if response_msg[1:] == '"' and response_msg[:1] == '"':
-        response_msg = response_msg[1:-1]
-    if response_msg.startswith('KlatreBot:'):
-        response_msg = response_msg[11:0]
-    await ctx.reply(response_msg)
+async def chd(ctx):
+    context_msgs = await KlatreGPT.get_recent_messages(ctx.channel.id, bot)
+    await SlaveLabour.ElaborateQueueSystem().task_queue.put(
+        SlaveLabour.GPTTask(ctx, context_msgs))
 
 
 @bot.command()
@@ -282,6 +286,7 @@ async def on_message(message):  # used for searching for substrings
 @bot.event
 async def setup_hook():
     bot.loop.create_task(send_message_at_time())
+    bot.loop.create_task(gpt_response_poster())
 
 
 async def on_command_error(ctx: commands.Context, error):

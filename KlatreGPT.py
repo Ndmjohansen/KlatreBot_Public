@@ -7,7 +7,18 @@ from ChadLogger import ChadLogger
 class KlatreGPT:
     timestamps = []
 
-    def __init__(self, key):
+    def __new__(self):
+        if not hasattr(self, 'instance'):
+            self.instance = super(KlatreGPT, self).__new__(self)
+            self.instance.__initialized = False
+        return self.instance
+
+    def __init__(self):
+        if (self.__initialized):
+            return
+        self.__initialized = True
+
+    def set_openai_key(self, key):
         openai.api_key = key
 
     def is_rate_limited(self):
@@ -23,12 +34,12 @@ class KlatreGPT:
         else:
             return True
 
-    def prompt_gpt(self, prompt_context, prompt_question):
+    async def prompt_gpt(self, prompt_context, prompt_question):
         if self.is_rate_limited():
             return 'Nu slapper du fandme lige lidt af med de spørgsmål'
         ChadLogger.log('Sending prompt to OpenAI')
         try:
-            response = openai.ChatCompletion.create(
+            response = await openai.ChatCompletion.acreate(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system",
@@ -47,7 +58,9 @@ class KlatreGPT:
             return_value = response['choices'][0]['message']['content']
         except Exception as e:
             return_value = f"Det kan jeg desværre ikke svare på. ({e})"
+
         ChadLogger.log(f"Result from OpenAI: {return_value}")
+
         return return_value
 
     @staticmethod
