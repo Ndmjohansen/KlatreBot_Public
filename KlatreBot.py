@@ -9,7 +9,7 @@ import requests
 import io
 from KlatringAttendance import KlatringAttendance
 from PIL import Image
-from pelleService import whereTheFuckIsPelle
+from pelleService import whereTheFuckIsPelle, getMomentStyleFromSeconds
 from KlatreGPT import KlatreGPT
 import subprocess
 import argparse
@@ -201,8 +201,7 @@ async def pelle(ctx):
 async def uptime(ctx):
     totalUptimeSeconds = (datetime.datetime.now() -
                           startTime).total_seconds()
-    prettyUptime = "{:0>8}".format(
-        str(datetime.timedelta(seconds=totalUptimeSeconds)))
+    prettyUptime = getMomentStyleFromSeconds(totalUptimeSeconds)
     gitHash = subprocess.check_output(
         ['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
     await ctx.send(
