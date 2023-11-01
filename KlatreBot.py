@@ -100,10 +100,10 @@ async def gpt_response_poster():
     while True:
         if bot.is_ready():
             t = await ProomptTaskQueue.ElaborateQueueSystem().result_queue.get()
-            ChadLogger.log(f"Got new response to {t.message}")
+            ChadLogger.log(f"Got new response to {t.question}")
             while not bot.is_ready():
                 await asyncio.sleep(1)
-            ChadLogger.log(f"Printing response to {t.message}")
+            ChadLogger.log(f"Printing response to {t.question}")
             await t.context.reply(t.return_text)
             ChadLogger.log(f"Message printed!")
 
