@@ -46,4 +46,5 @@ class ElaborateQueueSystem:
                     f"OpenAI timed out on question: {task.question}")
                 task.return_text = f"Det kan jeg desværre ikke hjælpe med [redacted] har sagt det ikke er cool!"
                 result = task
+            ChadLogger.log("Putting response in result queue")
             await self.result_queue.put(result)
