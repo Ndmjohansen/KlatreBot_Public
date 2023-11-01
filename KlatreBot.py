@@ -217,9 +217,36 @@ async def beep(ctx):
 
 
 @bot.command()
-async def logs(ctx):
+async def logs(ctx, count):
     if isinstance(ctx.channel, discord.DMChannel):
-        await ctx.channel.send(ChadLogger().query_logs())
+        await ctx.channel.send(ChadLogger().query_logs(count))
+
+
+@bot.command()
+async def logsdetails(ctx, count):
+    if isinstance(ctx.channel, discord.DMChannel):
+        await ctx.channel.send(ChadLogger().query_detailed_logs(count))
+
+
+@bot.command()
+async def logindex(ctx, index):
+    if isinstance(ctx.channel, discord.DMChannel):
+        await ctx.channel.send(ChadLogger().query_specific_log(index))
+
+
+@bot.command()
+async def logsdetailindex(ctx, index):
+    if isinstance(ctx.channel, discord.DMChannel):
+        await ctx.channel.send(ChadLogger().query_specific_detailed_log(index))
+
+
+@bot.command()
+async def loghelp(ctx):
+    if isinstance(ctx.channel, discord.DMChannel):
+        await ctx.channel.send("""!logs [count] _print logs_
+!logsdetails [count] _details if any, else None_
+!logindex [index] _information for a specific log index_
+!logsdetailindex [index] _details if any for a specific log index, else None_""")
 
 
 @bot.command()
