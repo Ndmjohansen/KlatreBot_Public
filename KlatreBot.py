@@ -14,7 +14,7 @@ from KlatreGPT import KlatreGPT
 import subprocess
 import argparse
 from ChadLogger import ChadLogger
-import SlaveLabour
+import ProomptTaskQueue
 
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
@@ -99,7 +99,7 @@ async def send_and_track_klatretid_message(channel):
 async def gpt_response_poster():
     while True:
         if bot.is_ready():
-            t = await SlaveLabour.ElaborateQueueSystem().result_queue.get()
+            t = await ProomptTaskQueue.ElaborateQueueSystem().result_queue.get()
             while not bot.is_ready():
                 await asyncio.sleep(1)
             await t.context.reply(t.return_text)
@@ -164,8 +164,8 @@ async def on_reaction_add(reaction, user):
 @bot.command()
 async def gpt(ctx):
     context_msgs = await KlatreGPT.get_recent_messages(ctx.channel.id, bot)
-    await SlaveLabour.ElaborateQueueSystem().task_queue.put(
-        SlaveLabour.GPTTask(ctx, context_msgs))
+    await ProomptTaskQueue.ElaborateQueueSystem().task_queue.put(
+        ProomptTaskQueue.GPTTask(ctx, context_msgs))
 
 
 @bot.command()
