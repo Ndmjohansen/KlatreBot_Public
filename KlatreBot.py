@@ -103,11 +103,18 @@ async def gpt_response_poster():
             while not bot.is_ready():
                 await asyncio.sleep(1)
             try:
+                if t.return_text == '':
+                    t.return_text = 'Somehow we did not get a return text from OpenAI.'
                 await asyncio.wait_for(t.context.reply(t.return_text), 10)
             except Exception as error:
-                ChadLogger.log(
-                    f"Could not send response to {t.question} retrying! er: {error}")
-                await ProomptTaskQueue.ElaborateQueueSystem().result_queue.put(t)
+                if t.send_to_discord_retry_count > 2:
+                    ChadLogger.log(
+                        f"Could never respond to {t.question} with {t.return_text}")
+                else:
+                    t.send_to_discord_retry_count += 1
+                    ChadLogger.log(
+                        f"Could not send response to {t.question} retrying! er: {error}")
+                    await ProomptTaskQueue.ElaborateQueueSystem().result_queue.put(t)
         else:
             await asyncio.sleep(1)
 

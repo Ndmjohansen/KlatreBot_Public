@@ -10,6 +10,7 @@ class GPTTask:
         self.question = self.context.message.content[5:]
         self.result_text = ''
         self.retry_count = 0
+        self.send_to_discord_retry_count = 0
 
 
 class ElaborateQueueSystem:
