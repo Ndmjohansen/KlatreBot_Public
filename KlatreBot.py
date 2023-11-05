@@ -100,19 +100,14 @@ async def gpt_response_poster():
     while True:
         if bot.is_ready():
             t = await ProomptTaskQueue.ElaborateQueueSystem().result_queue.get()
-            ChadLogger.log(f"Got new response to {t.question}")
             while not bot.is_ready():
                 await asyncio.sleep(1)
-            ChadLogger.log(f"Printing response to {t.question}")
             try:
                 await asyncio.wait_for(t.context.reply(t.return_text), 10)
-            except:
+            except Exception as error:
                 ChadLogger.log(
-                    f"Could not send response to {t.question} retrying!")
+                    f"Could not send response to {t.question} retrying! er: {error}")
                 await ProomptTaskQueue.ElaborateQueueSystem().result_queue.put(t)
-
-            ChadLogger.log(f"Message printed!")
-
         else:
             await asyncio.sleep(1)
 

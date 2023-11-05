@@ -9,6 +9,7 @@ class GPTTask:
         self.message_history = message_history
         self.question = self.context.message.content[5:]
         self.result_text = ''
+        self.retry_count = 0
 
 
 class ElaborateQueueSystem:
@@ -34,17 +35,21 @@ class ElaborateQueueSystem:
         if return_value.startswith('KlatreBot:'):
             return_value = return_value[11:0]
         task.return_text = return_value
-        return task
 
     async def worker(self):
         while True:
             task = await self.task_queue.get()
+            is_retrying = False
             try:
-                result = await asyncio.wait_for(self.do_work(task), 10)
+                await asyncio.wait_for(self.do_work(task), 30)
             except asyncio.TimeoutError:
-                ChadLogger.log(
-                    f"OpenAI timed out on question: {task.question}")
-                task.return_text = f"Det kan jeg desværre ikke hjælpe med [redacted] har sagt det ikke er cool!"
-                result = task
-            ChadLogger.log("Putting response in result queue")
-            await self.result_queue.put(result)
+                if task.retry_count > 10:
+                    task.return_text = f"Det kan jeg desværre ikke hjælpe med [redacted] har sagt det ikke er cool! Jeg har spurgt {task.retry_count} gange!"
+                else:
+                    is_retrying = True
+                    task.retry_count += 1
+                    ChadLogger.log(
+                        f"Retrying question! Count: {task.retry_count}")
+                    await self.task_queue.put(task)
+            if not is_retrying:
+                await self.result_queue.put(task)
