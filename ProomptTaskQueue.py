@@ -33,7 +33,7 @@ class ElaborateQueueSystem:
         if return_value[1:] == '"' and return_value[:1] == '"':
             return_value = return_value[1:-1]
         if return_value.startswith('KlatreBot:'):
-            return_value = return_value[11:0]
+            return_value = return_value[11:]
         task.return_text = return_value
 
     async def worker(self):
