@@ -31,7 +31,7 @@ class ElaborateQueueSystem:
     async def do_work(self, task):
         return_value = await KlatreGPT().prompt_gpt(
             task.message_history, task.question)
-        if return_value[1:] == '"' and return_value[:1] == '"':
+        if return_value[-1:] == '"' and return_value[:1] == '"':
             return_value = return_value[1:-1]
         if return_value.startswith('KlatreBot:'):
             return_value = return_value[11:]
