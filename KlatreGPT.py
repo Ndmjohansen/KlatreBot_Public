@@ -37,7 +37,7 @@ class KlatreGPT:
     async def prompt_gpt(self, prompt_context, prompt_question):
         if self.is_rate_limited():
             return 'Nu slapper du fandme lige lidt af med de spørgsmål'
-        ChadLogger.log('Sending prompt to OpenAI')
+        #ChadLogger.log('Sending prompt to OpenAI')
         try:
             response = await openai.ChatCompletion.acreate(
                 model="gpt-3.5-turbo",
@@ -53,13 +53,13 @@ class KlatreGPT:
                      }
                 ]
             )
-            ChadLogger.log(
-                f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
+            #ChadLogger.log(
+            #    f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
             return_value = response['choices'][0]['message']['content']
         except Exception as e:
             return_value = f"Det kan jeg desværre ikke svare på. ({e})"
 
-        ChadLogger.log(f"Result from OpenAI: {return_value}")
+        #ChadLogger.log(f"Result from OpenAI: {return_value}")
 
         return return_value
 
