@@ -2,6 +2,7 @@ name: Remote SSH
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
 
 jobs:
   build:
