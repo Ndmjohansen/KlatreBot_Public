@@ -320,7 +320,7 @@ async def on_message(message):  # used for searching for substrings
     # Ekstrabladet
     pattern = r".*(ekstrabladet\.dk|eb\.dk).*"
     if re.search(pattern, message.content.lower()):
-        await message.channel.send("I - især Magnus - skal til at holde op med at læse Ekstra Bladet, som om I var barbarer."
+        await message.channel.send("I - især Magnus - skal til at holde op med at læse Ekstra Bladet, som om I var barbarer.\n"
                                    "Jeg ved godt, at I høfligt forsøger at integrere jer i Sydhavnen, men få lige skubbet lidt på den gentrificering og læs et rigtigt medie")
 
     # Krævet for ikke at blocke @bot.command listeners
