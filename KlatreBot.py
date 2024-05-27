@@ -299,7 +299,7 @@ async def on_message(message):  # used for searching for substrings
             await message.channel.send(final_string)
 
     # Downus
-    if message.content.startswith('!downus') or 'fail' in message.content:
+    if message.content.lower().startswith('!downus') or 'fail' in message.content.lower():
         await message.channel.send(f"https://cdn.discordapp.com/attachments"
                                    f"/1003718776430268588/1153668006728192101/downus_on_wall.gif")
 
@@ -308,7 +308,7 @@ async def on_message(message):  # used for searching for substrings
         await message.channel.send(get_random_svar())
 
     # Glar?
-    if '!glar' in message.content and not message.content.startswith('!glar'):
+    if '!glar' in message.content.lower() and not message.content.lower().startswith('!glar'):
         await message.channel.send('https://imgur.com/CnRFnel')
 
     # Det kan man jo ikke det der
@@ -316,6 +316,12 @@ async def on_message(message):  # used for searching for substrings
     if re.search(pattern, message.content.lower()):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
+    
+    # Ekstrabladet
+    pattern = r".*(ekstrabladet\.dk|eb\.dk).*"
+    if re.search(pattern, message.content.lower()):
+        await message.channel.send("I - især Magnus - skal til at holde op med at læse Ekstra Bladet, som om I var barbarer."
+                                   "Jeg ved godt, at I høfligt forsøger at integrere jer i Sydhavnen, men få lige skubbet lidt på den gentrificering og læs et rigtigt medie")
 
     # Krævet for ikke at blocke @bot.command listeners
     await bot.process_commands(message)
