@@ -40,13 +40,14 @@ class KlatreGPT:
         #ChadLogger.log('Sending prompt to OpenAI')
         try:
             response = await openai.ChatCompletion.acreate(
-                model="gpt-3.5-turbo",
+                model="gpt-4o",
                 messages=[
                     {"role": "system",
                      "content": "You are a danish-speaking chat bot, with an edgy attitude."
                                 "You answer as if you are a teenage zoomer."
                                 "You are provided some context from the chat."
                                 "Limit your answers to 60 words or less."
+                                "Do not answer with \"Google it yourself\""
                      },
                     {"role": "user",
                      "content": f"CONTEXT:\n{prompt_context}QUESTION: {prompt_question}"
