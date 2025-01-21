@@ -316,6 +316,11 @@ async def on_message(message):  # used for searching for substrings
     if re.search(pattern, message.content.lower()):
         await message.channel.send('https://cdn.discordapp.com/attachments/'
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
+        
+    # Elmo
+    pattern = r".*(elmo|elon).*"
+    if re.search(pattern, message.content.lower()):
+        await message.channel.send('https://imgur.com/LNVCB8g')
     
     # Ekstrabladet
     pattern = r".*(ekstrabladet\.dk|eb\.dk).*"
