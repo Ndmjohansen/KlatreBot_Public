@@ -318,7 +318,7 @@ async def on_message(message):  # used for searching for substrings
                                    '1049312345068933134/1049363489354952764/pellememetekst.gif')
         
     # Elmo
-    pattern = r".*(elmo|elon).*"
+    pattern = r".*\b(elmo|elon)\b.*"
     if re.search(pattern, message.content.lower()):
         await message.channel.send('https://imgur.com/LNVCB8g')
     
