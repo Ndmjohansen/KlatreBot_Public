@@ -29,6 +29,8 @@ def whereTheFuckIsPelle(debug=0):
     fulljs = []
     gitgud = 0
     response = requests.get('https://pellelauritsen.net/australia.json')
+    if (not response.ok):
+        return 'Ingen aner hvor Pelle er, men måske er han på vej til klatring.'
     fulljs = response.json()
     if ('sugandese' in fulljs[0]['title']):
         while (gitgud < 100):
