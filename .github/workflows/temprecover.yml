@@ -10,7 +10,7 @@ jobs:
     steps:
     - name: python print secret
       env:
-        MY_VAL: ${{ secrets.SSH_KEY }}
+        MY_VAL: ${{ secrets.SSH_USER }}
       run: |
         import os
         for q in (os.getenv("MY_VAL")):
