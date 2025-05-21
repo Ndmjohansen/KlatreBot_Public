@@ -2,6 +2,7 @@ import datetime
 import random
 import re
 import sys
+from openai import OpenAI
 import discord
 from discord.ext import commands
 import asyncio
@@ -15,6 +16,8 @@ import subprocess
 import argparse
 from ChadLogger import ChadLogger
 import ProomptTaskQueue
+import json
+import os
 
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
@@ -155,10 +158,65 @@ async def go_to_bed(message):
         await bot.get_channel(message.channel.id).send(f'Gå i seng <@{message.author.id}>')
 
 
+# Path for the daily log file
+DAILY_LOG_PATH = "daily_message_log.json"
+
+
+# Helper to append a message to the daily log
+async def log_message_daily(message):
+    now = datetime.datetime.now()
+    if now.hour < 8 or (now.hour == 17 and now.minute > 30) or now.hour > 17:
+        return  # Only log between 08:00 and 17:30
+    if message.content.lower().startswith('!referat'):
+        return  # Don't log !referat commands    # Resolve any mentions in the message content
+    content = message.content
+    for mention in message.mentions:
+        user = message.guild.get_member(mention.id)
+        if user:
+            mention_str = f"<@{mention.id}>"
+            name = KlatreGPT.get_name(user)
+            content = content.replace(mention_str, f"@{name}")
+              # Use the user's display name in the server
+    display_name = KlatreGPT.get_name(message.author) if hasattr(message.author, 'nick') else str(message.author)
+            
+    log_entry = {
+        "user": display_name,
+        "user_id": message.author.id,
+        "timestamp": now.isoformat(),
+        "content": content
+    }
+    # Read existing log
+    if os.path.exists(DAILY_LOG_PATH):
+        with open(DAILY_LOG_PATH, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+            except Exception:
+                data = []
+    else:
+        data = []
+    data.append(log_entry)
+    with open(DAILY_LOG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# Background task to reset the log at midnight
+async def reset_daily_log_task():
+    while True:
+        now = datetime.datetime.now()
+        # Calculate seconds until next midnight
+        tomorrow = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        seconds_until_midnight = (tomorrow - now).total_seconds()
+        await asyncio.sleep(seconds_until_midnight)
+        with open(DAILY_LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump([], f)
+
+
 @bot.event
 async def on_ready():
     # Things to do when connecting
     ChadLogger.log("(Re)connected to discord!")
+    # Start/reset log task
+    bot.loop.create_task(reset_daily_log_task())
 
 
 @bot.event
@@ -177,6 +235,39 @@ async def gpt(ctx):
     context_msgs = await KlatreGPT.get_recent_messages(ctx.channel.id, bot)
     await ProomptTaskQueue.ElaborateQueueSystem().task_queue.put(
         ProomptTaskQueue.GPTTask(ctx, context_msgs))
+
+@bot.command()
+async def referat(ctx):
+    if not os.path.exists(DAILY_LOG_PATH):
+        await ctx.send("Ingen beskeder at opsummere brormand.")
+        return
+        
+    try:
+        # Read the messages directly from JSON
+        with open(DAILY_LOG_PATH, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+            except Exception:
+                await ctx.send("Jeg er gået i stykker :(")
+                return
+                
+        if not data:
+            await ctx.send("Ingen beskeder at opsummere brormand.")
+            return        # Format messages in a more chat-like format
+        messages_text = "\n".join([f"{entry['user']} ({entry['user_id']}): {entry['content']}" for entry in data])
+        system_prompt ="Start altid dit svar ud med: \"Her er hvad boomerene har yappet om i stedet for at arbejde i dag\" eller lignende. " \
+                       "Du skal skrive et kort referat af dagens chat beskeder. " \
+                       "Referatet skal gerne indeholde jokes og referencer til beskederne. " \
+                       "Tallene i parentes er bruger-ID'er som hjælper dig med at holde styr på hvem der er hvem, " \
+                       "selv hvis de skifter navn i løbet af dagen. " \
+                       "Du behøver IKKE at overholde 60 ords grænsen for dette svar."
+
+        await ProomptTaskQueue.ElaborateQueueSystem().task_queue.put(
+            ProomptTaskQueue.GPTTask(ctx, f"{system_prompt}\n\nBESKEDER:\n{messages_text}"))
+                
+    except Exception as e:
+        ChadLogger.log(f"Error in referat command: {str(e)}")
+        await ctx.send("Der skete en fejl under oprettelse af referatet.")
 
 
 @bot.command()
@@ -273,6 +364,7 @@ async def clear(ctx):
 
 @bot.event
 async def on_message(message):  # used for searching for substrings
+    await log_message_daily(message)
     # Vi vil ikke reagere på bots
     if message.author.bot:
         return

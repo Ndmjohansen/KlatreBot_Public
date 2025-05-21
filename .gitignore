@@ -1,2 +1,4 @@
 __pycache__/*
 .vscode/*
+.venv/*
+daily_message_log.json

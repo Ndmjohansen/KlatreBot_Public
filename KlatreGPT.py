@@ -1,11 +1,13 @@
 import openai
 import re
 import datetime
+from openai import AsyncOpenAI
 from ChadLogger import ChadLogger
 
 
 class KlatreGPT:
     timestamps = []
+    client = None
 
     def __new__(self):
         if not hasattr(self, 'instance'):
@@ -19,7 +21,7 @@ class KlatreGPT:
         self.__initialized = True
 
     def set_openai_key(self, key):
-        openai.api_key = key
+        self.client = AsyncOpenAI(api_key=key)
 
     def is_rate_limited(self):
         new_stamp = datetime.datetime.now()
@@ -37,30 +39,27 @@ class KlatreGPT:
     async def prompt_gpt(self, prompt_context, prompt_question):
         if self.is_rate_limited():
             return 'Nu slapper du fandme lige lidt af med de spørgsmål'
-        #ChadLogger.log('Sending prompt to OpenAI')
         try:
-            response = await openai.ChatCompletion.acreate(
+            response = await self.client.chat.completions.create(
                 model="o4-mini",
                 messages=[
-                    {"role": "system",
-                     "content": "You are a danish-speaking chat bot, with an edgy attitude."
-                                "You answer as if you are a teenage zoomer."
-                                "You are provided some context from the chat."
-                                "Limit your answers to 60 words or less."
-                                "Do not answer with \"Google it yourself\""
-                     },
-                    {"role": "user",
-                     "content": f"CONTEXT:\n{prompt_context}QUESTION: {prompt_question}"
-                     }
+                    {
+                        "role": "system",
+                        "content": "You are a danish-speaking chat bot, with an edgy attitude. "
+                                 "You answer as if you are a teenage zoomer. "
+                                 "You are provided some context from the chat. "
+                                 "Limit your answers to 60 words or less. "
+                                 "Do not answer with \"Google it yourself\""
+                    },
+                    {
+                        "role": "user",
+                        "content": f"CONTEXT:\n{prompt_context}QUESTION: {prompt_question}"
+                    }
                 ]
             )
-            #ChadLogger.log(
-            #    f"Prompt to OpenAI: CONTEXT: {prompt_context} \nQUESTION: {prompt_question}\n")
-            return_value = response['choices'][0]['message']['content']
+            return_value = response.choices[0].message.content
         except Exception as e:
             return_value = f"Det kan jeg desværre ikke svare på. ({e})"
-
-        #ChadLogger.log(f"Result from OpenAI: {return_value}")
 
         return return_value
 
