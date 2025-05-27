@@ -41,7 +41,7 @@ class KlatreGPT:
             return 'Nu slapper du fandme lige lidt af med de spørgsmål'
         try:
             response = await self.client.chat.completions.create(
-                model="o4-mini",
+                model="gpt-4.1",
                 messages=[
                     {
                         "role": "system",
