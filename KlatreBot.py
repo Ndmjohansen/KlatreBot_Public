@@ -255,8 +255,7 @@ async def referat(ctx):
             await ctx.send("Ingen beskeder at opsummere brormand.")
             return        # Format messages in a more chat-like format
         messages_text = "\n".join([f"{entry['user']} ({entry['user_id']}): {entry['content']}" for entry in data])
-        system_prompt = 
-"""
+        system_prompt = """
 **Instructions for the AI (Output must be in Danish):**
 
 1.  **Mandatory Opening Line (in Danish):**
