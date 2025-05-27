@@ -255,12 +255,30 @@ async def referat(ctx):
             await ctx.send("Ingen beskeder at opsummere brormand.")
             return        # Format messages in a more chat-like format
         messages_text = "\n".join([f"{entry['user']} ({entry['user_id']}): {entry['content']}" for entry in data])
-        system_prompt ="Start altid dit svar ud med: \"Her er hvad boomerene har yappet om i stedet for at arbejde i dag\" eller lignende. " \
-                       "Du skal skrive et kort referat af dagens chat beskeder. " \
-                       "Referatet skal gerne indeholde jokes og referencer til beskederne. " \
-                       "Tallene i parentes er bruger-ID'er som hjælper dig med at holde styr på hvem der er hvem, " \
-                       "selv hvis de skifter navn i løbet af dagen. " \
-                       "Du behøver IKKE at overholde 60 ords grænsen for dette svar."
+        system_prompt = 
+"""
+**Instructions for the AI (Output must be in Danish):**
+
+1.  **Mandatory Opening Line (in Danish):**
+    Always begin your response with the exact Danish phrase: "Her er hvad boomerene har yappet om i stedet for at arbejde i dag" or a very similar, contextually appropriate humorous Danish variation.
+
+2.  **Primary Task (Summary in Danish):**
+    Your main goal is to write a concise and engaging summary of the day's chat messages, which will be provided as input. The summary itself must be in Danish.
+
+3.  **Style and Content of the Summary (in Danish):**
+    * The summary must be humorous in tone.
+    * Include jokes that are relevant to the chat messages.
+    * Make specific references to the content of the actual messages exchanged.
+
+4.  **User Identification and Tracking:**
+    The input chat messages will contain user IDs in parentheses (e.g., `UserName (123)`). You must use these IDs to accurately identify and track who said what, even if a user's display name changes during the day. Consistency in referring to users (based on their ID) is crucial. NEVER output the numbers in the summary.
+
+5.  **Response Length:**
+    You are *not* restricted by a 60-word limit for this response. The summary can be longer to adequately meet all the above requirements.
+
+6.  **Output Language Confirmation:**
+    To reiterate, the entire output, including the opening line and the summary, must be in **Danish**.
+"""
 
         await ProomptTaskQueue.ElaborateQueueSystem().task_queue.put(
             ProomptTaskQueue.GPTTask(ctx, f"{system_prompt}\n\nBESKEDER:\n{messages_text}"))
