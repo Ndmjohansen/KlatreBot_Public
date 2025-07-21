@@ -6,11 +6,12 @@ import pytz
 # import pdb  # for debugging
 
 KINDS = {'ACCOMMODATION': ':love_hotel:', 'DRIVING': ':blue_car:', 'FLYING': ':airplane:', 'HIKING': ':man_running:', 'POINTOFINTEREST': ':mount_fuji:', 'SIGHTSEEING': ':statue_of_liberty:',
-         'WINE': ':wine:', 'TAKEOFF': ':airplane:', 'LANDING': ':airplane:', 'BREAKFAST': ':pancakes:', 'DINNER': ':sushi:', 'SLEEPING': ':sleeping:', 'TRANSFER': ':airplane:', 'CHILL': ':pepedance:'}
+         'WINE': ':wine:', 'TAKEOFF': ':airplane:', 'LANDING': ':airplane:', 'BREAKFAST': ':pancakes:', 'DINNER': ':sushi:', 'SLEEPING': ':sleeping:', 'TRANSFER': ':airplane:', 'CHILL': ':pepedance:',
+         'BUS': ':minibus:'}
 copenhagen = pytz.timezone('Europe/Copenhagen')
 
 
-def getMomentStyleFromSeconds(totalSeconds):
+def getSecondsAsDateTimeString(totalSeconds):
     minutes, seconds = divmod(totalSeconds, 60)
     hours, minutes = divmod(minutes, 60)
 
@@ -26,79 +27,92 @@ def getMomentStyleFromSeconds(totalSeconds):
 
 
 def whereTheFuckIsPelle(debug=0):
+    MAX_DISTANCE = 1000_000_000  # A large number to represent no activity
     fulljs = []
-    gitgud = 0
-    response = requests.get('https://pellelauritsen.net/australia.json')
-    if (not response.ok):
+
+    response = requests.get('https://pellelauritsen.net/namibia-2025.json')
+    if (not response.ok or response.len() == 0):
         return 'Ingen aner hvor Pelle er, men måske er han på vej til klatring.'
     fulljs = response.json()
-    if ('sugandese' in fulljs[0]['title']):
-        while (gitgud < 100):
-            response = requests.get(
-                f'https://pellelauritsen.net/australia-{gitgud}.json')
-            gitgud += 1
-            if (response.ok):
-                fulljs = response.json()
-                if ('sugandese' in fulljs[0]['title']):
-                    continue
-                else:
-                    break
-            else:
-                continue
-    if (gitgud == 100):
-        return ''
 
-    js = {}
-    lastDistance = 1000000000
-    shortestEntry = {}
+    currentAccommodation = {}
+    currentActivity = {}
+    lastDistance = MAX_DISTANCE
+    nextActivity = {}
+    
+    now = copenhagen.localize(datetime.datetime.now())
 
-    for event in fulljs:
-        if not 'begin' in event:
+    for activity in fulljs:
+        if not 'begin' in activity:
             continue
-        start = pytz.timezone(event['begin']['timezone']).localize(
-            parse(event['begin']['dateTime']))
-        end = pytz.timezone(event['end']['timezone']).localize(
-            parse(event['end']['dateTime']))
-        now = copenhagen.localize(datetime.datetime.now())
+        start = pytz.timezone(activity['begin']['timezone']).localize(
+            parse(activity['begin']['dateTime']))
+        end = pytz.timezone(activity['end']['timezone']).localize(
+            parse(activity['end']['dateTime']))
+        
         if debug:
-            now = copenhagen.localize(parse("2023-10-29T22:20:00"))
-        currentDistance = (start - now).total_seconds()
-        if (lastDistance > currentDistance and currentDistance > 0):
-            lastDistance = currentDistance
-            shortestEntry = event
-
+            now = copenhagen.localize(parse("2025-08-18T20:00:00"))
+        
         if (now > start and now < end):
-            js = event
-            break
+            if ( 'kind' in activity and activity['kind'] == 'ACCOMMODATION'):
+                currentAccommodation = activity
+            else:
+                currentActivity = activity
+
+            continue
+        
+        secondsUntilNext = (start - now).total_seconds()
+        if (lastDistance > secondsUntilNext and secondsUntilNext > 0):
+            lastDistance = secondsUntilNext
+            nextActivity = activity
 
     outputString = ""
-    if (len(js) == 0):
-        if (lastDistance < 0 or lastDistance == 1000000000):
+    if (len(currentActivity) == 0):
+        if (lastDistance < 0 or lastDistance == MAX_DISTANCE):
             return "Pelle er på vej til klatring..."
 
-        prettySeconds = getMomentStyleFromSeconds(lastDistance)
+        prettySeconds = getSecondsAsDateTimeString(lastDistance)
 
-        js = shortestEntry
-        outputString += f"Om {prettySeconds}: {pytz.timezone(js['begin']['timezone']).localize(parse(js['begin']['dateTime']))} - "
+        currentActivity = nextActivity
+        outputString += f"Om {prettySeconds}: {pytz.timezone(currentActivity['begin']['timezone']).localize(parse(currentActivity['begin']['dateTime']))} - "
 
-    outputString += f"{KINDS[js['kind']]} {js['title']} ({js['description']})"
-    beginLocation = f"{js['begin']['location']}"
-    endLocation = f"{js['end']['location']}"
+    outputString += f"{KINDS[currentActivity['kind']]} {currentActivity['title']} ({currentActivity['description']})"
+    
+    if (currentActivity['kind'] == 'FLYING' and 'description' in currentActivity):
+        flightNumber = currentActivity['description'].replace(" ", "")
+        outputString += f" https://www.flightradar24.com/data/flights/{flightNumber}"
+
+    beginLocation = f"{currentActivity['begin']['location']}"
+    endLocation = f"{currentActivity['end']['location']}"
     if (beginLocation != endLocation):
-        outputString += f" ({js['begin']['location']} -> {js['end']['location'] })"
+        outputString += f"\n({currentActivity['begin']['location']} -> {currentActivity['end']['location'] })"
 
-    end = pytz.timezone(event['end']['timezone']).localize(
-        parse(event['end']['dateTime']))
-    now = copenhagen.localize(datetime.datetime.now())
+    if (len(currentAccommodation) != 0):
+        outputString += f"\nI mellemtiden chiller Pelle @ {KINDS[currentAccommodation['kind']]} {currentAccommodation['title']})"
+
+    end = pytz.timezone(activity['end']['timezone']).localize(
+        parse(activity['end']['dateTime']))
+    
     if debug:
-        now = copenhagen.localize(parse("2023-10-29T23:28:59"))
-    sekunderTilEnd = getMomentStyleFromSeconds((end - now).total_seconds())
+        now = copenhagen.localize(parse("2025-08-18T23:28:59"))
 
+    sekunderTilEnd = getSecondsAsDateTimeString((end - now).total_seconds())
     outputString += f" færdig om {sekunderTilEnd}"
 
-    if ('url' in js):
-        outputString += f" {js['url']}"
-    if ('coordinate' in js):
-        outputString += f" https://www.openstreetmap.org/search?query={js['coordinate'][0]}%2C%20{js['coordinate'][1]}"
+    if ('url' in currentActivity):
+        outputString += f" {currentActivity['url']}"
+    elif ('url' in currentAccommodation):
+        outputString += f" {currentAccommodation['url']}"
+    
+    coordinate = []
+    if (len(nextActivity) == 0 and 'coordinate' in currentActivity):
+        coordinate = currentActivity['coordinate']
+    elif ('coordinate' in currentAccommodation):
+        coordinate = currentAccommodation['coordinate']
+    elif ('coordinate' in nextActivity):
+        coordinate = nextActivity['coordinate']
+
+    if (len(coordinate) == 2):
+        outputString += f" https://www.openstreetmap.org/search?query={currentActivity['coordinate'][0]}%2C%20{currentActivity['coordinate'][1]}"
 
     return outputString
