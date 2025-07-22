@@ -12,14 +12,17 @@ copenhagen = pytz.timezone('Europe/Copenhagen')
 
 
 def getSecondsAsDateTimeString(totalSeconds):
-    minutes, seconds = divmod(totalSeconds, 60)
+    days, seconds = divmod(totalSeconds, 86400)
+    minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
 
+    days_text = 'dag' if days == 1 else 'dage'
     hours_text = 'time' if hours == 1 else 'timer'
     minutes_text = 'minut' if minutes == 1 else 'minutter'
     seconds_text = 'sekund' if seconds == 1 else 'sekunder'
 
-    final_text = '' if hours == 0 else f"{hours:.0f} {hours_text} "
+    final_text = '' if days == 0 else f"{days:.0f} {days_text} "
+    final_text += '' if hours == 0 else f"{hours:.0f} {hours_text} "
     final_text += '' if hours == 0 and minutes == 0 else f"{minutes:.0f} {minutes_text} "
     final_text += '' if seconds == 0 else f"{seconds:.0f} {seconds_text}"
 
