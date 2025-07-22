@@ -26,12 +26,12 @@ def getSecondsAsDateTimeString(totalSeconds):
     return final_text
 
 
-def whereTheFuckIsPelle(debug=0):
+def whereTheFuckIsPelle(debug_ts=""):
     MAX_DISTANCE = 1000_000_000  # A large number to represent no activity
     fulljs = []
 
     response = requests.get('https://pellelauritsen.net/namibia-2025.json')
-    if (not response.ok or response.len() == 0):
+    if (not response.ok):
         return 'Ingen aner hvor Pelle er, men måske er han på vej til klatring.'
     fulljs = response.json()
 
@@ -40,18 +40,18 @@ def whereTheFuckIsPelle(debug=0):
     lastDistance = MAX_DISTANCE
     nextActivity = {}
     
-    now = copenhagen.localize(datetime.datetime.now())
+    if len(debug_ts) > 0:
+        now = copenhagen.localize(parse(debug_ts))
+    else:
+        now = copenhagen.localize(datetime.datetime.now())
 
-    for activity in fulljs:
+    for activity in fulljs.get('activities', []):
         if not 'begin' in activity:
             continue
         start = pytz.timezone(activity['begin']['timezone']).localize(
             parse(activity['begin']['dateTime']))
         end = pytz.timezone(activity['end']['timezone']).localize(
             parse(activity['end']['dateTime']))
-        
-        if debug:
-            now = copenhagen.localize(parse("2025-08-18T20:00:00"))
         
         if (now > start and now < end):
             if ( 'kind' in activity and activity['kind'] == 'ACCOMMODATION'):
@@ -76,7 +76,9 @@ def whereTheFuckIsPelle(debug=0):
         currentActivity = nextActivity
         outputString += f"Om {prettySeconds}: {pytz.timezone(currentActivity['begin']['timezone']).localize(parse(currentActivity['begin']['dateTime']))} - "
 
-    outputString += f"{KINDS[currentActivity['kind']]} {currentActivity['title']} ({currentActivity['description']})"
+    outputString += f"{KINDS[currentActivity['kind']]} {currentActivity['title']}"
+    if ('description' in currentActivity and len(currentActivity['description']) > 0):
+        outputString += f" ({currentActivity['description']})"
     
     if (currentActivity['kind'] == 'FLYING' and 'description' in currentActivity):
         flightNumber = currentActivity['description'].replace(" ", "")
@@ -87,17 +89,14 @@ def whereTheFuckIsPelle(debug=0):
     if (beginLocation != endLocation):
         outputString += f"\n({currentActivity['begin']['location']} -> {currentActivity['end']['location'] })"
 
-    if (len(currentAccommodation) != 0):
-        outputString += f"\nI mellemtiden chiller Pelle @ {KINDS[currentAccommodation['kind']]} {currentAccommodation['title']})"
-
-    end = pytz.timezone(activity['end']['timezone']).localize(
-        parse(activity['end']['dateTime']))
-    
-    if debug:
-        now = copenhagen.localize(parse("2025-08-18T23:28:59"))
+    end = pytz.timezone(currentActivity['end']['timezone']).localize(
+        parse(currentActivity['end']['dateTime']))
 
     sekunderTilEnd = getSecondsAsDateTimeString((end - now).total_seconds())
     outputString += f" færdig om {sekunderTilEnd}"
+
+    if (len(currentAccommodation) != 0):
+        outputString += f"\nI mellemtiden chiller Pelle @ {KINDS[currentAccommodation['kind']]} {currentAccommodation['title']}"
 
     if ('url' in currentActivity):
         outputString += f" {currentActivity['url']}"
@@ -113,6 +112,6 @@ def whereTheFuckIsPelle(debug=0):
         coordinate = nextActivity['coordinate']
 
     if (len(coordinate) == 2):
-        outputString += f" https://www.openstreetmap.org/search?query={currentActivity['coordinate'][0]}%2C%20{currentActivity['coordinate'][1]}"
+        outputString += f" https://www.openstreetmap.org/search?query={coordinate[0]}%2C%20{coordinate[1]}"
 
     return outputString
