@@ -313,7 +313,9 @@ async def jpg(ctx):
 
 @bot.command()
 async def pelle(ctx):
-    await ctx.send(whereTheFuckIsPelle())
+    content = ctx.message.content.split()
+    arg = content[1] if len(content) > 1 else None
+    await ctx.send(whereTheFuckIsPelle(arg))
 
 
 @bot.command()
