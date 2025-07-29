@@ -29,11 +29,16 @@ def getSecondsAsDateTimeString(totalSeconds):
     return final_text
 
 
-def whereTheFuckIsPelle(debug_ts=""):
+def whereTheFuckIsPelle(arg=None, debug_ts=""):
+    PELLE_CTX = "namibia-2025"
+
+    if (arg is not None and arg.lower() == 'pic'):
+        return f"https://pellelauritsen.net/api/html/{PELLE_CTX}/newest";
+
     MAX_DISTANCE = 1000_000_000  # A large number to represent no activity
     fulljs = []
 
-    response = requests.get('https://pellelauritsen.net/namibia-2025.json')
+    response = requests.get(f'https://pellelauritsen.net/{PELLE_CTX}.json')
     if (not response.ok):
         return 'Ingen aner hvor Pelle er, men måske er han på vej til klatring.'
     fulljs = response.json()
@@ -42,7 +47,7 @@ def whereTheFuckIsPelle(debug_ts=""):
     currentActivity = {}
     lastDistance = MAX_DISTANCE
     nextActivity = {}
-    
+
     if len(debug_ts) > 0:
         now = copenhagen.localize(parse(debug_ts))
     else:
@@ -85,7 +90,7 @@ def whereTheFuckIsPelle(debug_ts=""):
     
     if (currentActivity['kind'] == 'FLYING' and 'description' in currentActivity):
         flightNumber = currentActivity['description'].replace(" ", "")
-        outputString += f" https://www.flightradar24.com/data/flights/{flightNumber}"
+        outputString += f"\nhttps://www.flightradar24.com/data/flights/{flightNumber}"
 
     beginLocation = f"{currentActivity['begin']['location']}"
     endLocation = f"{currentActivity['end']['location']}"
