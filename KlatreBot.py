@@ -315,7 +315,18 @@ async def jpg(ctx):
 async def pelle(ctx):
     content = ctx.message.content.split()
     arg = content[1] if len(content) > 1 else None
-    await ctx.send(whereTheFuckIsPelle(arg))
+    
+    result = whereTheFuckIsPelle(arg)
+    
+    # Check if result is an image URL (for pic command)
+    if arg is not None and arg.lower() == 'pic' and result.startswith('http') and not result.startswith('Could not') and not result.startswith('Failed to'):
+        # Create embed with image
+        embed = discord.Embed(title="Dugfrisk Pelle Pic")
+        embed.set_image(url=result)
+        await ctx.send(embed=embed)
+    else:
+        # Text response (location info or error message)
+        await ctx.send(result)
 
 
 @bot.command()

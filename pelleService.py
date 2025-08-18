@@ -1,5 +1,6 @@
 # import requests module
 import requests
+import re
 import datetime
 from dateutil.parser import parse
 import pytz
@@ -33,7 +34,19 @@ def whereTheFuckIsPelle(arg=None, debug_ts=""):
     PELLE_CTX = "namibia-2025"
 
     if (arg is not None and arg.lower() == 'pic'):
-        return f"https://pellelauritsen.net/api/html/{PELLE_CTX}/newest";
+        try:
+            html_url = f"https://pellelauritsen.net/api/html/{PELLE_CTX}/newest"
+            response = requests.get(html_url)
+            response.raise_for_status()
+            
+            # Extract image URL using regex
+            img_match = re.search(r'<img src="([^"]+)"', response.text)
+            if img_match:
+                return img_match.group(1)
+            else:
+                return "Could not find latest Pelle picture"
+        except Exception as e:
+            return f"Failed to fetch Pelle pic: {str(e)}"
 
     MAX_DISTANCE = 1000_000_000  # A large number to represent no activity
     fulljs = []
