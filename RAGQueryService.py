@@ -252,7 +252,7 @@ class RAGQueryService:
             """
             
             response = await self.embedding_service.client.chat.completions.create(
-                model="gpt-4o-mini",  # Use cheaper model for parsing
+                model="gpt-5-mini",  # Use cheaper model for parsing
                 messages=[
                     {
                         "role": "system",
@@ -263,7 +263,7 @@ class RAGQueryService:
                         "content": extraction_prompt
                     }
                 ],
-                temperature=0.1  # Low temperature for consistent parsing
+                temperature=1.0  # Default temperature for gpt-5-mini
             )
             
             # Parse AI response

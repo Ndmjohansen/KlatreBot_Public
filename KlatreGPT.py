@@ -85,7 +85,7 @@ Do not answer with "Google it yourself"
 If you have relevant context about the user, use it to make your response more personal and accurate."""
             
             response = await self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-5-mini",
                 messages=[
                     {
                         "role": "system",

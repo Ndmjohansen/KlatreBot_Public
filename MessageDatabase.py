@@ -414,7 +414,7 @@ class MessageDatabase:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 query = """
-                    SELECT m.content, u.display_name, m.timestamp, m.message_type
+                    SELECT m.content, u.display_name, m.timestamp, m.message_type, m.discord_user_id
                     FROM messages m
                     JOIN users u ON m.discord_user_id = u.discord_user_id
                     WHERE u.display_name IS NOT NULL
@@ -440,7 +440,8 @@ class MessageDatabase:
                         'content': row[0],
                         'display_name': row[1],
                         'timestamp': row[2],
-                        'message_type': row[3]
+                        'message_type': row[3],
+                        'discord_user_id': row[4]
                     }
                     for row in rows
                 ]
