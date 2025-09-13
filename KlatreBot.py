@@ -747,11 +747,14 @@ async def test_mention(ctx, *, query: str):
                     response += f"  @{mention_id} → Not found in database\n"
         
         # Test full query parsing
-        target_user, target_user_id, time_reference = await KlatreGPT().rag_query_service.parse_user_query(query)
+        target_user, target_user_id, time_reference, is_user_query, target_users, query_type = await KlatreGPT().rag_query_service.parse_user_query(query)
         response += f"\nFinal Parsing:\n"
         response += f"  Target User: {target_user}\n"
         response += f"  Target User ID: {target_user_id}\n"
         response += f"  Time Reference: {time_reference} days ago\n"
+        response += f"  Is User Query: {is_user_query}\n"
+        response += f"  Target Users: {target_users}\n"
+        response += f"  Query Type: {query_type}\n"
         response += "```"
         
         await ctx.send(response)
