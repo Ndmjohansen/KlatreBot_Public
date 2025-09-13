@@ -18,7 +18,7 @@ class RAGQueryService:
         self.db = message_db
         self.embedding_service = embedding_service
         self.logger = logging.getLogger(__name__)
-        self.similarity_threshold = 0.7  # Minimum similarity score
+        self.similarity_threshold = 1.5  # Maximum distance threshold (lower distance = more similar)
         self.max_context_messages = 10   # Maximum messages to include in context
         
     async def find_relevant_context(self, query: str, user_id: Optional[int] = None,
@@ -38,10 +38,10 @@ class RAGQueryService:
                 user_id=user_id
             )
             
-            # Filter by similarity threshold
+            # Filter by distance threshold (lower distance = more similar)
             relevant_messages = [
                 msg for msg in similar_messages 
-                if msg['similarity'] >= self.similarity_threshold
+                if msg['similarity'] <= self.similarity_threshold
             ]
             
             self.logger.debug(f"Found {len(relevant_messages)} relevant messages for query")

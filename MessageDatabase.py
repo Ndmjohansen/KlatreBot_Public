@@ -577,10 +577,9 @@ class MessageDatabase:
                     stored_embedding = pickle.loads(embedding_blob)
                     stored_vector = np.array(stored_embedding)
                     
-                    # Calculate cosine similarity
-                    similarity = np.dot(query_vector, stored_vector) / (
-                        np.linalg.norm(query_vector) * np.linalg.norm(stored_vector)
-                    )
+                    # Calculate L2 distance (Euclidean distance)
+                    # Lower distance = more similar
+                    distance = np.linalg.norm(query_vector - stored_vector)
                     
                     similarities.append({
                         'discord_message_id': message_id,
@@ -588,11 +587,11 @@ class MessageDatabase:
                         'display_name': display_name,
                         'timestamp': timestamp,
                         'message_type': message_type,
-                        'similarity': float(similarity)
+                        'similarity': float(distance)
                     })
                 
-                # Sort by similarity and return top results
-                similarities.sort(key=lambda x: x['similarity'], reverse=True)
+                # Sort by distance (ascending - lower distance = more similar)
+                similarities.sort(key=lambda x: x['similarity'], reverse=False)
                 return similarities[:limit]
                 
         except Exception as e:

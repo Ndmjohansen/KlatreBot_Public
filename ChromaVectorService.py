@@ -114,10 +114,11 @@ class ChromaVectorService:
                     metadata = results['metadatas'][0][i]
                     distance = results['distances'][0][i]
                     
-                    # Convert L2 distance to similarity
-                    # For L2 distance, we use 1 / (1 + distance) to get similarity in [0, 1]
-                    # This gives us a similarity score where closer vectors have higher similarity
-                    similarity = 1.0 / (1.0 + distance)
+                    # Use Euclidean distance directly
+                    # Lower distance = more similar
+                    # We'll use distance as the similarity score (inverted: lower is better)
+                    # This provides much better separation between relevant and irrelevant results
+                    similarity = distance
                     
                     similar_messages.append({
                         'discord_message_id': metadata['discord_message_id'],
