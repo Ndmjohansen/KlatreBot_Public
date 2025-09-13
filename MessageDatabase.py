@@ -37,6 +37,7 @@ class MessageDatabase:
                     message_type TEXT DEFAULT 'text',
                     timestamp TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    has_embedding BOOLEAN DEFAULT FALSE,
                     FOREIGN KEY (discord_user_id) REFERENCES users(discord_user_id)
                 )
             """)
@@ -55,6 +56,41 @@ class MessageDatabase:
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_messages_content 
                 ON messages(content)
+            """)
+            
+            # Create embeddings table for RAG
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS message_embeddings (
+                    discord_message_id INTEGER PRIMARY KEY,
+                    embedding BLOB,
+                    embedding_model TEXT DEFAULT 'text-embedding-3-small',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (discord_message_id) REFERENCES messages(discord_message_id)
+                )
+            """)
+            
+            # Create user personality embeddings table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_personality_embeddings (
+                    discord_user_id INTEGER PRIMARY KEY,
+                    personality_embedding BLOB,
+                    personality_text TEXT,
+                    embedding_model TEXT DEFAULT 'text-embedding-3-small',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (discord_user_id) REFERENCES users(discord_user_id)
+                )
+            """)
+            
+            # Create indexes for embeddings
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_embeddings_model 
+                ON message_embeddings(embedding_model)
+            """)
+            
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_personality_embeddings_model 
+                ON user_personality_embeddings(embedding_model)
             """)
             
             await db.commit()
@@ -411,3 +447,285 @@ class MessageDatabase:
         except Exception as e:
             self.logger.error(f"Error getting messages for RAG: {e}")
             return []
+    
+    async def store_message_embedding(self, discord_message_id: int, embedding: List[float], 
+                                    model: str = 'text-embedding-3-small') -> bool:
+        """Store embedding for a message"""
+        try:
+            import pickle
+            async with aiosqlite.connect(self.db_path) as db:
+                # Serialize embedding as binary data
+                embedding_blob = pickle.dumps(embedding)
+                
+                await db.execute("""
+                    INSERT OR REPLACE INTO message_embeddings 
+                    (discord_message_id, embedding, embedding_model)
+                    VALUES (?, ?, ?)
+                """, (discord_message_id, embedding_blob, model))
+                
+                # Mark message as having embedding
+                await db.execute("""
+                    UPDATE messages 
+                    SET has_embedding = TRUE 
+                    WHERE discord_message_id = ?
+                """, (discord_message_id,))
+                
+                await db.commit()
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error storing message embedding: {e}")
+            return False
+    
+    async def store_user_personality_embedding(self, discord_user_id: int, 
+                                             personality_text: str, embedding: List[float],
+                                             model: str = 'text-embedding-3-small') -> bool:
+        """Store personality embedding for a user"""
+        try:
+            import pickle
+            async with aiosqlite.connect(self.db_path) as db:
+                # Serialize embedding as binary data
+                embedding_blob = pickle.dumps(embedding)
+                
+                await db.execute("""
+                    INSERT OR REPLACE INTO user_personality_embeddings 
+                    (discord_user_id, personality_embedding, personality_text, embedding_model, updated_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (discord_user_id, embedding_blob, personality_text, model))
+                
+                await db.commit()
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error storing user personality embedding: {e}")
+            return False
+    
+    async def get_similar_messages(self, query_embedding: List[float], limit: int = 10,
+                                 user_id: Optional[int] = None, 
+                                 start_date: Optional[datetime.datetime] = None,
+                                 end_date: Optional[datetime.datetime] = None) -> List[Dict[str, Any]]:
+        """Find similar messages using cosine similarity"""
+        try:
+            import pickle
+            import numpy as np
+            
+            async with aiosqlite.connect(self.db_path) as db:
+                # Get all message embeddings
+                query = """
+                    SELECT me.discord_message_id, me.embedding, m.content, u.display_name, 
+                           m.timestamp, m.message_type
+                    FROM message_embeddings me
+                    JOIN messages m ON me.discord_message_id = m.discord_message_id
+                    JOIN users u ON m.discord_user_id = u.discord_user_id
+                    WHERE u.display_name IS NOT NULL
+                """
+                params = []
+                
+                if user_id:
+                    query += " AND m.discord_user_id = ?"
+                    params.append(user_id)
+                
+                if start_date:
+                    query += " AND m.timestamp >= ?"
+                    params.append(start_date)
+                
+                if end_date:
+                    query += " AND m.timestamp <= ?"
+                    params.append(end_date)
+                
+                cursor = await db.execute(query, params)
+                rows = await cursor.fetchall()
+                
+                if not rows:
+                    return []
+                
+                # Calculate similarities
+                similarities = []
+                query_vector = np.array(query_embedding)
+                
+                for row in rows:
+                    message_id, embedding_blob, content, display_name, timestamp, message_type = row
+                    stored_embedding = pickle.loads(embedding_blob)
+                    stored_vector = np.array(stored_embedding)
+                    
+                    # Calculate cosine similarity
+                    similarity = np.dot(query_vector, stored_vector) / (
+                        np.linalg.norm(query_vector) * np.linalg.norm(stored_vector)
+                    )
+                    
+                    similarities.append({
+                        'discord_message_id': message_id,
+                        'content': content,
+                        'display_name': display_name,
+                        'timestamp': timestamp,
+                        'message_type': message_type,
+                        'similarity': float(similarity)
+                    })
+                
+                # Sort by similarity and return top results
+                similarities.sort(key=lambda x: x['similarity'], reverse=True)
+                return similarities[:limit]
+                
+        except Exception as e:
+            self.logger.error(f"Error finding similar messages: {e}")
+            return []
+    
+    async def get_user_personality_context(self, discord_user_id: int) -> Optional[Dict[str, Any]]:
+        """Get user personality context for RAG"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT personality_text, created_at, updated_at
+                    FROM user_personality_embeddings
+                    WHERE discord_user_id = ?
+                """, (discord_user_id,))
+                
+                result = await cursor.fetchone()
+                if result:
+                    return {
+                        'personality_text': result[0],
+                        'created_at': result[1],
+                        'updated_at': result[2]
+                    }
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error getting user personality context: {e}")
+            return None
+    
+    async def get_messages_without_embeddings(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get messages that don't have embeddings yet"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT m.discord_message_id, m.content, m.timestamp, u.display_name
+                    FROM messages m
+                    JOIN users u ON m.discord_user_id = u.discord_user_id
+                    WHERE m.has_embedding = FALSE AND u.display_name IS NOT NULL
+                    ORDER BY m.timestamp DESC
+                    LIMIT ?
+                """, (limit,))
+                
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'discord_message_id': row[0],
+                        'content': row[1],
+                        'timestamp': row[2],
+                        'display_name': row[3]
+                    }
+                    for row in rows
+                ]
+                
+        except Exception as e:
+            self.logger.error(f"Error getting messages without embeddings: {e}")
+            return []
+    
+    async def get_user_by_display_name(self, display_name: str) -> Optional[Dict[str, Any]]:
+        """Find user by display name (case insensitive)"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT discord_user_id, display_name, message_count, is_admin, created_at
+                    FROM users 
+                    WHERE LOWER(display_name) = LOWER(?)
+                """, (display_name,))
+                
+                result = await cursor.fetchone()
+                if result:
+                    return {
+                        'discord_user_id': result[0],
+                        'display_name': result[1],
+                        'message_count': result[2],
+                        'is_admin': bool(result[3]),
+                        'created_at': result[4]
+                    }
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error finding user by display name: {e}")
+            return None
+    
+    async def search_users_by_name(self, name_fragment: str) -> List[Dict[str, Any]]:
+        """Search users by name fragment (case insensitive)"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT discord_user_id, display_name, message_count, is_admin
+                    FROM users 
+                    WHERE LOWER(display_name) LIKE LOWER(?)
+                    ORDER BY message_count DESC
+                    LIMIT 10
+                """, (f"%{name_fragment}%",))
+                
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'discord_user_id': row[0],
+                        'display_name': row[1],
+                        'message_count': row[2],
+                        'is_admin': bool(row[3])
+                    }
+                    for row in rows
+                ]
+                
+        except Exception as e:
+            self.logger.error(f"Error searching users by name: {e}")
+            return []
+    
+    async def get_user_by_id(self, discord_user_id: int) -> Optional[Dict[str, Any]]:
+        """Find user by Discord user ID"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT discord_user_id, display_name, message_count, is_admin, created_at
+                    FROM users 
+                    WHERE discord_user_id = ?
+                """, (discord_user_id,))
+                
+                result = await cursor.fetchone()
+                if result:
+                    return {
+                        'discord_user_id': result[0],
+                        'display_name': result[1],
+                        'message_count': result[2],
+                        'is_admin': bool(result[3]),
+                        'created_at': result[4]
+                    }
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error finding user by ID: {e}")
+            return None
+    
+    async def get_rag_stats(self) -> Dict[str, Any]:
+        """Get RAG-specific statistics"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Count messages with embeddings
+                cursor = await db.execute("SELECT COUNT(*) FROM messages WHERE has_embedding = TRUE")
+                messages_with_embeddings = (await cursor.fetchone())[0]
+                
+                # Count total messages
+                cursor = await db.execute("SELECT COUNT(*) FROM messages")
+                total_messages = (await cursor.fetchone())[0]
+                
+                # Count user personality embeddings
+                cursor = await db.execute("SELECT COUNT(*) FROM user_personality_embeddings")
+                user_personalities = (await cursor.fetchone())[0]
+                
+                # Count users with personalities
+                cursor = await db.execute("SELECT COUNT(DISTINCT discord_user_id) FROM user_personality_embeddings")
+                users_with_personalities = (await cursor.fetchone())[0]
+                
+                return {
+                    'messages_with_embeddings': messages_with_embeddings,
+                    'total_messages': total_messages,
+                    'embedding_coverage': messages_with_embeddings / total_messages if total_messages > 0 else 0,
+                    'user_personalities': user_personalities,
+                    'users_with_personalities': users_with_personalities
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error getting RAG stats: {e}")
+            return {}

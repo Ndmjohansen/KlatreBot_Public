@@ -4,9 +4,10 @@ from ChadLogger import ChadLogger
 
 
 class GPTTask:
-    def __init__(self, discord_context, message_history):
+    def __init__(self, discord_context, message_history, user_id=None):
         self.context = discord_context
         self.message_history = message_history
+        self.user_id = user_id
         self.question = self.context.message.content[5:]
         self.result_text = ''
         self.retry_count = 0
@@ -30,7 +31,7 @@ class ElaborateQueueSystem:
 
     async def do_work(self, task):
         return_value = await KlatreGPT().prompt_gpt(
-            task.message_history, task.question)
+            task.message_history, task.question, task.user_id)
         if return_value[-1:] == '"' and return_value[:1] == '"':
             return_value = return_value[1:-1]
         if return_value.startswith('KlatreBot:'):
