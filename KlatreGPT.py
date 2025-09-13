@@ -68,15 +68,8 @@ class KlatreGPT:
                 enhanced_context = prompt_context
                 is_factual_query = False
             
-            # Choose system prompt based on query type
-            if is_factual_query:
-                system_prompt = """You are a helpful Danish assistant that provides factual information about chat history.
-You answer questions about what specific users said or discussed in a neutral, informative tone.
-Use the provided context to give accurate, factual answers.
-Be concise and direct - limit answers to 60 words or less.
-Focus on the facts from the chat history, not your personality."""
-            else:
-                system_prompt = """You are a danish-speaking chat bot, with an edgy attitude. 
+            # Use the same edgy zoomer personality for all responses
+            system_prompt = """You are a danish-speaking chat bot, with an edgy attitude. 
 You answer as if you are a teenage zoomer. 
 You are provided some context from the chat and potentially relevant historical messages.
 Use the context to give more personalized and relevant answers.

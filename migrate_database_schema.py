@@ -53,27 +53,6 @@ async def migrate_database(db_path: str = "klatrebot.db"):
             else:
                 logger.info("✅ message_embeddings table already exists")
             
-            # Check if user_personality_embeddings table exists
-            cursor = await db.execute("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='user_personality_embeddings'
-            """)
-            if not await cursor.fetchone():
-                logger.info("Creating user_personality_embeddings table...")
-                await db.execute("""
-                    CREATE TABLE user_personality_embeddings (
-                        discord_user_id INTEGER PRIMARY KEY,
-                        personality_embedding BLOB,
-                        personality_text TEXT,
-                        embedding_model TEXT DEFAULT 'text-embedding-3-small',
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (discord_user_id) REFERENCES users(discord_user_id)
-                    )
-                """)
-                logger.info("✅ Created user_personality_embeddings table")
-            else:
-                logger.info("✅ user_personality_embeddings table already exists")
             
             # Create indexes for RAG optimization
             logger.info("Creating RAG indexes...")
@@ -92,10 +71,6 @@ async def migrate_database(db_path: str = "klatrebot.db"):
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_embeddings_model 
                 ON message_embeddings(embedding_model)
-            """)
-            await db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_personality_embeddings_model 
-                ON user_personality_embeddings(embedding_model)
             """)
             logger.info("✅ Created RAG indexes")
             

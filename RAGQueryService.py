@@ -7,11 +7,11 @@ It finds relevant messages and user context to enhance GPT responses.
 
 import logging
 import re
+import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from MessageDatabase import MessageDatabase
 from RAGEmbeddingService import RAGEmbeddingService
 from ChadLogger import ChadLogger
-import datetime
 
 class RAGQueryService:
     def __init__(self, message_db: MessageDatabase, embedding_service: RAGEmbeddingService):
@@ -51,16 +51,8 @@ class RAGQueryService:
             self.logger.error(f"Error finding relevant context: {e}")
             return []
     
-    async def get_user_context(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """Get user personality context"""
-        try:
-            return await self.db.get_user_personality_context(user_id)
-        except Exception as e:
-            self.logger.error(f"Error getting user context: {e}")
-            return None
     
-    async def format_context_for_gpt(self, query: str, user_id: Optional[int] = None,
-                                   include_personality: bool = True) -> str:
+    async def format_context_for_gpt(self, query: str, user_id: Optional[int] = None) -> str:
         """Format context for GPT prompt"""
         try:
             context_parts = []
@@ -78,12 +70,6 @@ class RAGQueryService:
                     context_parts.append(
                         f"{msg['display_name']} ({timestamp.strftime('%Y-%m-%d %H:%M')}): {msg['content']}"
                     )
-            
-            # Get user personality context if requested
-            if include_personality and user_id:
-                user_context = await self.get_user_context(user_id)
-                if user_context:
-                    context_parts.append(f"\nUSER PERSONALITY CONTEXT:\n{user_context['personality_text']}")
             
             return "\n".join(context_parts) if context_parts else ""
             
@@ -190,7 +176,7 @@ class RAGQueryService:
             self.logger.error(f"Error searching by topic: {e}")
             return []
     
-    async def parse_user_query(self, query: str) -> Tuple[Optional[str], Optional[int], Optional[int]]:
+    async def parse_user_query(self, query: str) -> Tuple[Optional[str], Optional[int], Optional[int], bool, List[str], str]:
         """Parse query to extract target user and time reference using AI"""
         try:
             # First, try to extract @mentions directly from the query
@@ -224,9 +210,10 @@ class RAGQueryService:
             # Use OpenAI to extract user and time information
             extraction_prompt = f"""
             Analyze this query and extract:
-            1. The target user name (if any) - must match one of the available users
+            1. Target user names (can be multiple) - must match available users
             2. Time reference in days (if any)
-            3. Handle @mentions by converting them to display names
+            3. Query type and intent
+            4. Handle @mentions by converting them to display names
             
             Query: "{query}"
             {user_context}
@@ -236,19 +223,23 @@ class RAGQueryService:
             - Use the exact display name from the available users list
             - The display names in the list are from the database, not Discord display names
             - User IDs are provided for reference but use display names in response
+            - Support multiple users: "Nicklas and Pelle", "both users", etc.
+            - Support everyone queries: "everyone", "everybody", "all users"
             
             Respond in JSON format:
             {{
-                "target_user": "exact_display_name_from_available_users_or_null",
+                "target_users": ["user1", "user2"] or [],
                 "time_days_ago": number_or_null,
-                "is_user_query": true_or_false
+                "is_user_query": true_or_false,
+                "query_type": "single_user|multi_user|everyone|general|comparison"
             }}
             
             Examples:
-            - "What did Troels talk about 5 days ago?" → {{"target_user": "Troels", "time_days_ago": 5, "is_user_query": true}}
-            - "What did TroelsTheClimber say yesterday?" → {{"target_user": "TroelsTheClimber", "time_days_ago": 1, "is_user_query": true}}
-            - "What did @123456789 discuss last week?" → {{"target_user": "DatabaseDisplayName", "time_days_ago": 7, "is_user_query": true}}
-            - "How are you?" → {{"target_user": null, "time_days_ago": null, "is_user_query": false}}
+            - "What did Nicklas say about climbing?" → {{"target_users": ["Nicklas"], "time_days_ago": null, "is_user_query": true, "query_type": "single_user"}}
+            - "What do Nicklas and Pelle think about Greece?" → {{"target_users": ["Nicklas", "Pelle"], "time_days_ago": null, "is_user_query": true, "query_type": "multi_user"}}
+            - "What did everyone discuss 5 days ago?" → {{"target_users": [], "time_days_ago": 5, "is_user_query": true, "query_type": "everyone"}}
+            - "Compare Nicklas and Pelle's views" → {{"target_users": ["Nicklas", "Pelle"], "time_days_ago": null, "is_user_query": true, "query_type": "comparison"}}
+            - "How are you?" → {{"target_users": [], "time_days_ago": null, "is_user_query": false, "query_type": "general"}}
             """
             
             response = await self.embedding_service.client.chat.completions.create(
@@ -270,12 +261,16 @@ class RAGQueryService:
             import json
             try:
                 result = json.loads(response.choices[0].message.content)
-                target_user = result.get('target_user')
+                target_users = result.get('target_users', [])
                 time_reference = result.get('time_days_ago')
                 is_user_query = result.get('is_user_query', False)
+                query_type = result.get('query_type', 'general')
+                
+                # For backward compatibility, use first user as primary target
+                target_user = target_users[0] if target_users else None
             except json.JSONDecodeError:
                 self.logger.error("Failed to parse AI response as JSON")
-                return None, None, None
+                return None, None, None, False
             
             # Look up user by name if found
             target_user_id = None
@@ -293,14 +288,14 @@ class RAGQueryService:
                         self.logger.warning(f"User '{target_user}' not found in database")
                         target_user = None
             
-            return target_user, target_user_id, time_reference
+            return target_user, target_user_id, time_reference, is_user_query, target_users, query_type
             
         except Exception as e:
             self.logger.error(f"Error parsing user query with AI: {e}")
             # Fallback to simple regex parsing
             return await self._fallback_parse_user_query(query)
     
-    async def _fallback_parse_user_query(self, query: str) -> Tuple[Optional[str], Optional[int], Optional[int]]:
+    async def _fallback_parse_user_query(self, query: str) -> Tuple[Optional[str], Optional[int], Optional[int], bool, List[str], str]:
         """Fallback regex-based parsing if AI fails"""
         # Common patterns for user-specific queries
         user_patterns = [
@@ -359,7 +354,7 @@ class RAGQueryService:
                     target_user_id = similar_users[0]['discord_user_id']
                     target_user = similar_users[0]['display_name']
         
-        return target_user, target_user_id, time_reference
+        return target_user, target_user_id, time_reference, target_user_id is not None, [target_user] if target_user else [], "single_user" if target_user else "general"
     
     async def find_user_specific_messages(self, query: str, target_user_id: int, 
                                         days_back: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -399,32 +394,55 @@ class RAGQueryService:
         """Get enhanced context for user-specific queries with neutral response mode"""
         try:
             # Parse the query to extract target user and time info
-            target_user, target_user_id, time_reference = await self.parse_user_query(query)
+            target_user, target_user_id, time_reference, is_user_query, target_users, query_type = await self.parse_user_query(query)
             
             context_parts = []
-            is_factual_query = False
+            is_factual_query = is_user_query
             
-            if target_user_id:
+            if query_type == "everyone":
+                # Handle everyone queries - get messages from all users
                 is_factual_query = True
-                # Find messages by the target user
-                messages = await self.find_user_specific_messages(
-                    query, 
-                    target_user_id, 
-                    time_reference
-                )
-                
-                if messages:
-                    context_parts.append(f"MESSAGES FROM {target_user.upper()}:")
-                    for msg in messages[:self.max_context_messages]:
-                        timestamp = msg['timestamp']
-                        if isinstance(timestamp, str):
-                            timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                        
-                        context_parts.append(
-                            f"{timestamp.strftime('%Y-%m-%d %H:%M')}: {msg['content']}"
+                all_users = await self.db.get_user_stats()
+                for user in all_users:
+                    if user['display_name']:
+                        user_messages = await self.find_user_specific_messages(
+                            query, 
+                            user['discord_user_id'], 
+                            time_reference
                         )
-                else:
-                    context_parts.append(f"No relevant messages found from {target_user}")
+                        if user_messages:
+                            context_parts.append(f"MESSAGES FROM {user['display_name'].upper()}:")
+                            for msg in user_messages[:3]:  # Limit per user
+                                timestamp = msg['timestamp']
+                                if isinstance(timestamp, str):
+                                    timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                context_parts.append(
+                                    f"{timestamp.strftime('%Y-%m-%d %H:%M')}: {msg['content']}"
+                                )
+            
+            elif query_type in ["single_user", "multi_user", "comparison"] and target_users:
+                # Handle single or multiple user queries
+                is_factual_query = True
+                for user_name in target_users:
+                    user_info = await self.db.get_user_by_display_name(user_name)
+                    if user_info:
+                        user_messages = await self.find_user_specific_messages(
+                            query, 
+                            user_info['discord_user_id'], 
+                            time_reference
+                        )
+                        if user_messages:
+                            context_parts.append(f"MESSAGES FROM {user_name.upper()}:")
+                            for msg in user_messages[:5]:  # Limit per user
+                                timestamp = msg['timestamp']
+                                if isinstance(timestamp, str):
+                                    timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                context_parts.append(
+                                    f"{timestamp.strftime('%Y-%m-%d %H:%M')}: {msg['content']}"
+                                )
+                        else:
+                            context_parts.append(f"No relevant messages found from {user_name}")
+            
             else:
                 # Fall back to general search
                 relevant_messages = await self.find_relevant_context(query, asking_user_id)

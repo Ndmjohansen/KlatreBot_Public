@@ -556,7 +556,6 @@ async def rag_stats(ctx):
 Beskeder med embeddings: {stats.get('messages_with_embeddings', 0)}
 Totale beskeder: {stats.get('total_messages', 0)}
 Embedding dækning: {stats.get('embedding_coverage', 0):.1%}
-Bruger personligheder: {stats.get('users_with_personalities', 0)}
 Embedding model: {stats.get('embedding_model', 'N/A')}
 Similarity threshold: {stats.get('similarity_threshold', 0.7)}
 ```"""
@@ -587,28 +586,6 @@ async def generate_embeddings(ctx, limit: int = 100):
         await ctx.send(f"Fejl ved at generere embeddings: {e}")
 
 
-@bot.command()
-async def generate_personality(ctx, user_id: int):
-    """Generate personality embedding for a user (admin only)"""
-    if not await message_db.is_admin(ctx.author.id):
-        await ctx.send("Du har ikke adgang til denne kommando.")
-        return
-    
-    if not rag_initialized:
-        await ctx.send("RAG system er ikke initialiseret.")
-        return
-    
-    await ctx.send(f"Genererer personlighed for bruger {user_id}...")
-    
-    try:
-        success = await KlatreGPT().embedding_service.generate_user_personality_from_messages(user_id)
-        if success:
-            await ctx.send(f"Personlighed genereret for bruger {user_id}!")
-        else:
-            await ctx.send(f"Fejl ved at generere personlighed for bruger {user_id}")
-            
-    except Exception as e:
-        await ctx.send(f"Fejl ved at generere personlighed: {e}")
 
 
 @bot.command()
@@ -697,14 +674,16 @@ async def test_user_query(ctx, *, query: str):
         return
     
     try:
-        target_user, target_user_id, time_reference = await KlatreGPT().rag_query_service.parse_user_query(query)
+        target_user, target_user_id, time_reference, is_user_query, target_users, query_type = await KlatreGPT().rag_query_service.parse_user_query(query)
         
         response = f"**Query Analysis:**\n```yaml\n"
         response += f"Query: {query}\n"
-        response += f"Target User: {target_user}\n"
-        response += f"Target User ID: {target_user_id}\n"
+        response += f"Target Users: {target_users}\n"
+        response += f"Primary User: {target_user}\n"
+        response += f"Primary User ID: {target_user_id}\n"
         response += f"Time Reference: {time_reference} days ago\n"
-        response += f"Is Factual Query: {target_user_id is not None}\n"
+        response += f"Query Type: {query_type}\n"
+        response += f"Is Factual Query: {is_user_query}\n"
         response += "```"
         
         await ctx.send(response)

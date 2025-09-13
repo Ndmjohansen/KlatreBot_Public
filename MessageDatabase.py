@@ -69,18 +69,6 @@ class MessageDatabase:
                 )
             """)
             
-            # Create user personality embeddings table
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS user_personality_embeddings (
-                    discord_user_id INTEGER PRIMARY KEY,
-                    personality_embedding BLOB,
-                    personality_text TEXT,
-                    embedding_model TEXT DEFAULT 'text-embedding-3-small',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (discord_user_id) REFERENCES users(discord_user_id)
-                )
-            """)
             
             # Create indexes for embeddings
             await db.execute("""
@@ -88,10 +76,6 @@ class MessageDatabase:
                 ON message_embeddings(embedding_model)
             """)
             
-            await db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_personality_embeddings_model 
-                ON user_personality_embeddings(embedding_model)
-            """)
             
             await db.commit()
             
@@ -478,28 +462,6 @@ class MessageDatabase:
             self.logger.error(f"Error storing message embedding: {e}")
             return False
     
-    async def store_user_personality_embedding(self, discord_user_id: int, 
-                                             personality_text: str, embedding: List[float],
-                                             model: str = 'text-embedding-3-small') -> bool:
-        """Store personality embedding for a user"""
-        try:
-            import pickle
-            async with aiosqlite.connect(self.db_path) as db:
-                # Serialize embedding as binary data
-                embedding_blob = pickle.dumps(embedding)
-                
-                await db.execute("""
-                    INSERT OR REPLACE INTO user_personality_embeddings 
-                    (discord_user_id, personality_embedding, personality_text, embedding_model, updated_at)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (discord_user_id, embedding_blob, personality_text, model))
-                
-                await db.commit()
-                return True
-                
-        except Exception as e:
-            self.logger.error(f"Error storing user personality embedding: {e}")
-            return False
     
     async def get_similar_messages(self, query_embedding: List[float], limit: int = 10,
                                  user_id: Optional[int] = None, 
@@ -571,28 +533,6 @@ class MessageDatabase:
             self.logger.error(f"Error finding similar messages: {e}")
             return []
     
-    async def get_user_personality_context(self, discord_user_id: int) -> Optional[Dict[str, Any]]:
-        """Get user personality context for RAG"""
-        try:
-            async with aiosqlite.connect(self.db_path) as db:
-                cursor = await db.execute("""
-                    SELECT personality_text, created_at, updated_at
-                    FROM user_personality_embeddings
-                    WHERE discord_user_id = ?
-                """, (discord_user_id,))
-                
-                result = await cursor.fetchone()
-                if result:
-                    return {
-                        'personality_text': result[0],
-                        'created_at': result[1],
-                        'updated_at': result[2]
-                    }
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"Error getting user personality context: {e}")
-            return None
     
     async def get_messages_without_embeddings(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Get messages that don't have embeddings yet"""
@@ -711,20 +651,10 @@ class MessageDatabase:
                 cursor = await db.execute("SELECT COUNT(*) FROM messages")
                 total_messages = (await cursor.fetchone())[0]
                 
-                # Count user personality embeddings
-                cursor = await db.execute("SELECT COUNT(*) FROM user_personality_embeddings")
-                user_personalities = (await cursor.fetchone())[0]
-                
-                # Count users with personalities
-                cursor = await db.execute("SELECT COUNT(DISTINCT discord_user_id) FROM user_personality_embeddings")
-                users_with_personalities = (await cursor.fetchone())[0]
-                
                 return {
                     'messages_with_embeddings': messages_with_embeddings,
                     'total_messages': total_messages,
-                    'embedding_coverage': messages_with_embeddings / total_messages if total_messages > 0 else 0,
-                    'user_personalities': user_personalities,
-                    'users_with_personalities': users_with_personalities
+                    'embedding_coverage': messages_with_embeddings / total_messages if total_messages > 0 else 0
                 }
                 
         except Exception as e:

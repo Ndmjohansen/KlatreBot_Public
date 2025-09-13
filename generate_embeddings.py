@@ -28,7 +28,6 @@ async def main():
     parser.add_argument("--db-path", default="klatrebot.db", help="SQLite database path")
     parser.add_argument("--limit", type=int, default=1000, help="Maximum messages to process")
     parser.add_argument("--batch-size", type=int, default=100, help="Batch size for processing")
-    parser.add_argument("--personalities", action="store_true", help="Also generate user personalities")
     
     args = parser.parse_args()
     
@@ -52,17 +51,6 @@ async def main():
         success_count = await embedding_service.generate_message_embeddings(args.limit)
         logger.info(f"Generated {success_count} message embeddings")
         
-        # Generate user personalities if requested
-        if args.personalities:
-            logger.info("Generating user personalities...")
-            
-            # Get all users with messages
-            user_stats = await message_db.get_user_stats()
-            user_ids = [user['discord_user_id'] for user in user_stats if user['message_count'] > 10]
-            
-            logger.info(f"Generating personalities for {len(user_ids)} users...")
-            personality_count = await embedding_service.batch_generate_personalities(user_ids)
-            logger.info(f"Generated {personality_count} user personalities")
         
         # Show final stats
         stats = await embedding_service.get_embedding_stats()
