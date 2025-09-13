@@ -43,7 +43,7 @@ class ChromaVectorService:
     
     async def store_embedding(self, message_id: int, embedding: List[float], 
                             content: str, display_name: str, timestamp: datetime.datetime,
-                            message_type: str = 'text') -> bool:
+                            message_type: str = 'text', discord_user_id: int = None) -> bool:
         """Store a message embedding in ChromaDB"""
         if not self.initialized:
             await self.initialize()
@@ -57,6 +57,7 @@ class ChromaVectorService:
             # Prepare metadata
             metadata = {
                 "discord_message_id": message_id,
+                "discord_user_id": discord_user_id,
                 "display_name": display_name,
                 "timestamp": timestamp.isoformat(),
                 "message_type": message_type,
@@ -91,14 +92,22 @@ class ChromaVectorService:
         try:
             # Build where clause for filtering
             where_clause = {}
+            conditions = []
+            
             if user_id:
-                where_clause["discord_user_id"] = user_id
+                conditions.append({"discord_user_id": user_id})
             
             if start_date:
-                where_clause["timestamp"] = {"$gte": start_date.isoformat()}
+                conditions.append({"timestamp": {"$gte": start_date.isoformat()}})
             
             if end_date:
-                where_clause["timestamp"] = {"$lte": end_date.isoformat()}
+                conditions.append({"timestamp": {"$lte": end_date.isoformat()}})
+            
+            # Combine conditions with $and if multiple conditions exist
+            if len(conditions) == 1:
+                where_clause = conditions[0]
+            elif len(conditions) > 1:
+                where_clause = {"$and": conditions}
             
             # Perform similarity search
             results = self.collection.query(
@@ -182,7 +191,7 @@ class ChromaVectorService:
             async with aiosqlite.connect(message_db.db_path) as db:
                 cursor = await db.execute("""
                     SELECT me.discord_message_id, me.embedding, m.content, u.display_name, 
-                           m.timestamp, m.message_type
+                           m.timestamp, m.message_type, m.discord_user_id
                     FROM message_embeddings me
                     JOIN messages m ON me.discord_message_id = m.discord_message_id
                     JOIN users u ON m.discord_user_id = u.discord_user_id
@@ -192,7 +201,7 @@ class ChromaVectorService:
                 rows = await cursor.fetchall()
                 migrated_count = 0
                 
-                for message_id, embedding_blob, content, display_name, timestamp, message_type in rows:
+                for message_id, embedding_blob, content, display_name, timestamp, message_type, discord_user_id in rows:
                     try:
                         import pickle
                         embedding = pickle.loads(embedding_blob)
@@ -203,7 +212,7 @@ class ChromaVectorService:
                         
                         # Store in ChromaDB
                         success = await self.store_embedding(
-                            message_id, embedding, content, display_name, timestamp, message_type
+                            message_id, embedding, content, display_name, timestamp, message_type, discord_user_id
                         )
                         
                         if success:

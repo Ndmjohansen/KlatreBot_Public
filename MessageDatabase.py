@@ -470,7 +470,7 @@ class MessageDatabase:
                     try:
                         # Get message details for ChromaDB
                         cursor = await db.execute("""
-                            SELECT m.content, u.display_name, m.timestamp, m.message_type
+                            SELECT m.content, u.display_name, m.timestamp, m.message_type, m.discord_user_id
                             FROM messages m
                             JOIN users u ON m.discord_user_id = u.discord_user_id
                             WHERE m.discord_message_id = ?
@@ -478,7 +478,7 @@ class MessageDatabase:
                         
                         row = await cursor.fetchone()
                         if row:
-                            content, display_name, timestamp, message_type = row
+                            content, display_name, timestamp, message_type, discord_user_id = row
                             
                             # Convert timestamp if it's a string
                             if isinstance(timestamp, str):
@@ -486,7 +486,7 @@ class MessageDatabase:
                             
                             # Store in ChromaDB
                             await self.chroma_service.store_embedding(
-                                discord_message_id, embedding, content, display_name, timestamp, message_type
+                                discord_message_id, embedding, content, display_name, timestamp, message_type, discord_user_id
                             )
                     except Exception as e:
                         self.logger.warning(f"Failed to store in ChromaDB: {e}")

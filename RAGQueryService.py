@@ -378,10 +378,10 @@ class RAGQueryService:
                 start_date=start_date
             )
             
-            # Filter by similarity threshold
+            # Filter by similarity threshold (lower distance = more similar)
             relevant_messages = [
                 msg for msg in similar_messages 
-                if msg['similarity'] >= self.similarity_threshold
+                if msg['similarity'] <= self.similarity_threshold
             ]
             
             return relevant_messages
