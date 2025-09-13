@@ -246,12 +246,13 @@ async def log_message_persistent(message):
             return
         
         # Generate embedding for RAG system if RAG is initialized
-        if rag_initialized and KlatreGPT().embedding_service:
+        # Only embed text messages, not commands (messages starting with !)
+        if rag_initialized and KlatreGPT().embedding_service and not content.startswith('!'):
             try:
                 # Generate embedding for the message content
                 embedding = await KlatreGPT().embedding_service.generate_embedding(content)
                 if embedding:
-                    # Store the embedding in the database
+                    # Store the embedding in the database (both SQLite and ChromaDB)
                     embed_success = await message_db.store_message_embedding(
                         message.id, 
                         embedding, 
@@ -265,6 +266,8 @@ async def log_message_persistent(message):
                     ChadLogger.log(f"Failed to generate embedding for message {message.id}")
             except Exception as embed_error:
                 ChadLogger.log(f"Error generating embedding for message {message.id}: {embed_error}")
+        elif content.startswith('!'):
+            ChadLogger.log(f"Skipping embedding for command message: {content[:50]}...")
         
     except Exception as e:
         ChadLogger.log(f"Error logging message to database: {e}")

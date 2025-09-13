@@ -46,6 +46,11 @@ class RAGEmbeddingService:
         
         for i, message in enumerate(messages):
             try:
+                # Skip command messages (starting with !)
+                if message['content'].startswith('!'):
+                    self.logger.debug(f"Skipping command message {message['discord_message_id']}")
+                    continue
+                
                 # Generate embedding
                 embedding = await self.generate_embedding(message['content'])
                 if embedding:

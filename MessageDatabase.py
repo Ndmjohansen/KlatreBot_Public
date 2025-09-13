@@ -4,11 +4,14 @@ import datetime
 import asyncio
 from typing import Optional, List, Dict, Any
 import logging
+from ChromaVectorService import ChromaVectorService
 
 class MessageDatabase:
     def __init__(self, db_path: str = "klatrebot.db"):
         self.db_path = db_path
         self.logger = logging.getLogger(__name__)
+        self.vector_available = False
+        self.chroma_service = ChromaVectorService()
     
     async def initialize(self):
         """Initialize database and create tables if they don't exist"""
@@ -76,6 +79,18 @@ class MessageDatabase:
                 ON message_embeddings(embedding_model)
             """)
             
+            # Initialize ChromaDB for vector operations
+            try:
+                await self.chroma_service.initialize()
+                if self.chroma_service.initialized:
+                    self.vector_available = True
+                    self.logger.info("ChromaDB vector service initialized successfully")
+                else:
+                    self.vector_available = False
+                    self.logger.warning("ChromaDB vector service failed to initialize")
+            except Exception as e:
+                self.logger.warning(f"ChromaDB not available: {e}")
+                self.vector_available = False
             
             await db.commit()
             
@@ -115,6 +130,7 @@ class MessageDatabase:
                 
         except Exception as e:
             self.logger.error(f"Error creating default admin: {e}")
+    
     
     async def upsert_user(self, discord_user_id: int, display_name: Optional[str] = None, 
                          is_admin: bool = False) -> bool:
@@ -435,18 +451,45 @@ class MessageDatabase:
     
     async def store_message_embedding(self, discord_message_id: int, embedding: List[float], 
                                     model: str = 'text-embedding-3-small') -> bool:
-        """Store embedding for a message"""
+        """Store embedding for a message in both vector and BLOB tables"""
         try:
             import pickle
             async with aiosqlite.connect(self.db_path) as db:
-                # Serialize embedding as binary data
+                # Serialize embedding as binary data for BLOB storage
                 embedding_blob = pickle.dumps(embedding)
                 
+                # Store in BLOB table (for backward compatibility)
                 await db.execute("""
                     INSERT OR REPLACE INTO message_embeddings 
                     (discord_message_id, embedding, embedding_model)
                     VALUES (?, ?, ?)
                 """, (discord_message_id, embedding_blob, model))
+                
+                # Store in ChromaDB if available
+                if self.vector_available:
+                    try:
+                        # Get message details for ChromaDB
+                        cursor = await db.execute("""
+                            SELECT m.content, u.display_name, m.timestamp, m.message_type
+                            FROM messages m
+                            JOIN users u ON m.discord_user_id = u.discord_user_id
+                            WHERE m.discord_message_id = ?
+                        """, (discord_message_id,))
+                        
+                        row = await cursor.fetchone()
+                        if row:
+                            content, display_name, timestamp, message_type = row
+                            
+                            # Convert timestamp if it's a string
+                            if isinstance(timestamp, str):
+                                timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            
+                            # Store in ChromaDB
+                            await self.chroma_service.store_embedding(
+                                discord_message_id, embedding, content, display_name, timestamp, message_type
+                            )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to store in ChromaDB: {e}")
                 
                 # Mark message as having embedding
                 await db.execute("""
@@ -467,7 +510,30 @@ class MessageDatabase:
                                  user_id: Optional[int] = None, 
                                  start_date: Optional[datetime.datetime] = None,
                                  end_date: Optional[datetime.datetime] = None) -> List[Dict[str, Any]]:
-        """Find similar messages using cosine similarity"""
+        """Find similar messages using vector search or fallback to brute force"""
+        if self.vector_available:
+            return await self.vector_similarity_search(query_embedding, limit, user_id, start_date, end_date)
+        else:
+            return await self.brute_force_similarity_search(query_embedding, limit, user_id, start_date, end_date)
+    
+    async def vector_similarity_search(self, query_embedding: List[float], limit: int,
+                                     user_id: Optional[int] = None,
+                                     start_date: Optional[datetime.datetime] = None,
+                                     end_date: Optional[datetime.datetime] = None) -> List[Dict[str, Any]]:
+        """Use ChromaDB for similarity search"""
+        try:
+            return await self.chroma_service.search_similar(
+                query_embedding, limit, user_id, start_date, end_date
+            )
+        except Exception as e:
+            self.logger.error(f"Error in ChromaDB similarity search: {e}")
+            return await self.brute_force_similarity_search(query_embedding, limit, user_id, start_date, end_date)
+    
+    async def brute_force_similarity_search(self, query_embedding: List[float], limit: int,
+                                          user_id: Optional[int] = None, 
+                                          start_date: Optional[datetime.datetime] = None,
+                                          end_date: Optional[datetime.datetime] = None) -> List[Dict[str, Any]]:
+        """Fallback brute force similarity search using cosine similarity"""
         try:
             import pickle
             import numpy as np
