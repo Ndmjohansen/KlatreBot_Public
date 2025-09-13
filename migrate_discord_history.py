@@ -15,6 +15,10 @@ import time
 from datetime import datetime, timedelta
 from MessageDatabase import MessageDatabase
 import logging
+from dotenv import load_dotenv
+
+# Load .env file if it exists
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -38,12 +42,7 @@ class DiscordMigrator:
         intents.guilds = True
         
         self.client = discord.Client(intents=intents)
-        
-        @self.client.event
-        async def on_ready():
-            logger.info(f"Logged in as {self.client.user}")
-            self.guild = self.client.guilds[0]  # Assume first guild
-            logger.info(f"Connected to guild: {self.guild.name}")
+        self.guild = None
     
     async def load_checkpoint(self):
         """Load migration checkpoint"""
@@ -67,9 +66,15 @@ class DiscordMigrator:
             json.dump(checkpoint, f, indent=2)
         logger.info(f"Checkpoint saved: {checkpoint['total_messages']} messages processed")
     
-    async def migrate_channel(self, channel, checkpoint):
+    async def migrate_channel(self, channel, checkpoint, days_back=90):
         """Migrate messages from a single channel"""
-        logger.info(f"Migrating channel: {channel.name} ({channel.id})")
+        logger.info(f"Migrating channel: {channel.name} ({channel.id}) - Last {days_back} days")
+        
+        # Calculate cutoff date (make it timezone-aware to match Discord timestamps)
+        cutoff_date = datetime.now() - timedelta(days=days_back)
+        # Make it timezone-aware by adding UTC timezone info
+        cutoff_date = cutoff_date.replace(tzinfo=discord.utils.utcnow().tzinfo)
+        logger.info(f"Cutoff date: {cutoff_date}")
         
         # Determine starting point
         after_id = checkpoint.get('last_message_id') if checkpoint.get('last_channel_id') == channel.id else None
@@ -82,6 +87,11 @@ class DiscordMigrator:
                 # Skip bot messages
                 if message.author.bot:
                     continue
+                
+                # Skip messages older than cutoff date
+                if message.created_at < cutoff_date:
+                    logger.info(f"Reached cutoff date {cutoff_date}, stopping migration for channel {channel.name}")
+                    break
                 
                 # Determine message type
                 message_type = 'command' if message.content.startswith('!') else 'text'
@@ -136,7 +146,7 @@ class DiscordMigrator:
             logger.error(f"Error migrating channel {channel.name}: {e}")
             return 0
     
-    async def migrate_all_channels(self, channel_ids=None):
+    async def migrate_all_channels(self, channel_ids=None, days_back=90):
         """Migrate all channels or specific channels"""
         checkpoint = await self.load_checkpoint()
         
@@ -145,12 +155,20 @@ class DiscordMigrator:
         
         # Get channels to migrate
         if channel_ids:
+            logger.info(f"Looking for specific channels: {channel_ids}")
             channels = [self.guild.get_channel(int(cid)) for cid in channel_ids]
             channels = [c for c in channels if c is not None]
+            logger.info(f"Found {len(channels)} specific channels")
+            for i, ch in enumerate(channels):
+                if ch:
+                    logger.info(f"Channel {i+1}: {ch.name} (ID: {ch.id})")
+                else:
+                    logger.warning(f"Channel {i+1}: Not found or not accessible")
         else:
             channels = [ch for ch in self.guild.text_channels if ch.permissions_for(self.guild.me).read_message_history]
+            logger.info(f"Found {len(channels)} accessible text channels")
         
-        logger.info(f"Found {len(channels)} channels to migrate")
+        logger.info(f"Found {len(channels)} channels to migrate (last {days_back} days)")
         
         total_messages = 0
         for i, channel in enumerate(channels):
@@ -165,7 +183,7 @@ class DiscordMigrator:
                 logger.info(f"Skipping channel {channel.name} - already processed")
                 continue
             
-            messages_processed = await self.migrate_channel(channel, checkpoint)
+            messages_processed = await self.migrate_channel(channel, checkpoint, days_back)
             total_messages += messages_processed
             
             # Update checkpoint
@@ -186,29 +204,57 @@ class DiscordMigrator:
             os.remove(self.checkpoint_file)
             logger.info("Checkpoint file cleaned up")
     
-    async def run(self, channel_ids=None):
+    async def run(self, channel_ids=None, days_back=90):
         """Run the migration"""
         try:
             await self.initialize()
+            
+            # Create a task to run the migration after client is ready
+            migration_task = None
+            
+            @self.client.event
+            async def on_ready():
+                nonlocal migration_task
+                logger.info(f"Logged in as {self.client.user}")
+                if self.client.guilds:
+                    self.guild = self.client.guilds[0]
+                    logger.info(f"Connected to guild: {self.guild.name}")
+                    
+                    # Start migration task
+                    migration_task = asyncio.create_task(self.migrate_all_channels(channel_ids, days_back))
+                else:
+                    logger.error("No guilds found. Make sure the bot is added to a server.")
+            
+            # Start the client (this will block until the client is closed)
             await self.client.start(self.discord_token)
+            
         except KeyboardInterrupt:
             logger.info("Migration interrupted by user")
         except Exception as e:
             logger.error(f"Migration failed: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
         finally:
             if hasattr(self, 'client'):
                 await self.client.close()
 
 async def main():
     parser = argparse.ArgumentParser(description="Migrate Discord history to SQLite")
-    parser.add_argument("--discord-token", required=True, help="Discord bot token")
+    parser.add_argument("--discord-token", help="Discord bot token (or use discordkey from .env)")
     parser.add_argument("--db-path", default="klatrebot.db", help="SQLite database path")
     parser.add_argument("--channels", nargs="+", help="Specific channel IDs to migrate")
+    parser.add_argument("--days", type=int, default=90, help="Number of days back to migrate (default: 90)")
     
     args = parser.parse_args()
     
-    migrator = DiscordMigrator(args.discord_token, args.db_path)
-    await migrator.run(args.channels)
+    # Get Discord token from args or environment
+    discord_token = args.discord_token or os.getenv('discordkey')
+    if not discord_token:
+        logger.error("Discord token not provided. Use --discord-token or set discordkey in .env file")
+        return
+    
+    migrator = DiscordMigrator(discord_token, args.db_path)
+    await migrator.run(args.channels, args.days)
 
 if __name__ == "__main__":
     asyncio.run(main())
