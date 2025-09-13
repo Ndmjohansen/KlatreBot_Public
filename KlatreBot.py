@@ -18,6 +18,12 @@ from ChadLogger import ChadLogger
 import ProomptTaskQueue
 import json
 import os
+import aiosqlite
+from MessageDatabase import MessageDatabase
+from dotenv import load_dotenv
+
+# Load .env file if it exists
+load_dotenv()
 
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
@@ -28,9 +34,9 @@ parser.add_argument("--openaikey", type=str, help="OpenAI key")
 
 args = parser.parse_args()
 
-# Gem de læste argumenter i variabler
-discordkey = args.discordkey
-openaikey = args.openaikey
+# Gem de læste argumenter i variabler, med .env som fallback
+discordkey = args.discordkey or os.getenv('discordkey')
+openaikey = args.openaikey or os.getenv('openaikey')
 
 bot = commands.Bot(intents=discord.Intents.all(), command_prefix='!')
 # client = discord.Client(intents=discord.Intents.all())
@@ -38,6 +44,9 @@ DISCORD_CHANNEL_ID = 1003718776430268588
 DISCORD_SANDBOX_CHANNEL_ID = 1049312345068933134
 startTime = datetime.datetime.now()
 KlatreGPT().set_openai_key(openaikey)
+
+# Initialize database
+message_db = MessageDatabase()
 
 
 def get_random_svar():
@@ -162,7 +171,7 @@ async def go_to_bed(message):
 DAILY_LOG_PATH = "daily_message_log.json"
 
 
-# Helper to append a message to the daily log
+# Helper to append a message to the daily log (legacy system)
 async def log_message_daily(message):
     now = datetime.datetime.now()
     if now.hour < 8 or (now.hour == 17 and now.minute > 30) or now.hour > 17:
@@ -199,6 +208,45 @@ async def log_message_daily(message):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+# Helper to log message to persistent database
+async def log_message_persistent(message):
+    """Log message to SQLite database for RAG system"""
+    try:
+        # Skip bot messages
+        if message.author.bot:
+            return
+        
+        # Determine message type
+        message_type = 'command' if message.content.startswith('!') else 'text'
+        
+        # Resolve mentions in content
+        content = message.content
+        for mention in message.mentions:
+            user = message.guild.get_member(mention.id)
+            if user:
+                mention_str = f"<@{mention.id}>"
+                name = KlatreGPT.get_name(user)
+                content = content.replace(mention_str, f"@{name}")
+        
+        # Log to database
+        success = await message_db.log_message(
+            discord_message_id=message.id,
+            discord_channel_id=message.channel.id,
+            discord_user_id=message.author.id,
+            content=content,
+            message_type=message_type,
+            timestamp=message.created_at
+        )
+        
+        if not success:
+            ChadLogger.log(f"Failed to log message {message.id} to database")
+        
+    except Exception as e:
+        ChadLogger.log(f"Error logging message to database: {e}")
+        import traceback
+        ChadLogger.log(f"Traceback: {traceback.format_exc()}")
+
+
 # Background task to reset the log at midnight
 async def reset_daily_log_task():
     while True:
@@ -215,6 +263,9 @@ async def reset_daily_log_task():
 async def on_ready():
     # Things to do when connecting
     ChadLogger.log("(Re)connected to discord!")
+    # Initialize database
+    await message_db.initialize()
+    ChadLogger.log("Database initialized!")
     # Start/reset log task
     bot.loop.create_task(reset_daily_log_task())
 
@@ -392,9 +443,87 @@ async def clear(ctx):
         await ctx.channel.send("Logs cleared!")
 
 
+# Admin commands for database management
+@bot.command()
+async def set_display_name(ctx, user_id: int, *, display_name: str):
+    """Set display name for a user (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    success = await message_db.set_display_name(user_id, display_name)
+    if success:
+        await ctx.send(f"Display name sat til '{display_name}' for bruger {user_id}")
+    else:
+        await ctx.send(f"Fejl ved at sætte display name for bruger {user_id}")
+
+
+@bot.command()
+async def make_admin(ctx, user_id: int):
+    """Grant admin access to a user (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    success = await message_db.make_admin(user_id)
+    if success:
+        await ctx.send(f"Admin adgang givet til bruger {user_id}")
+    else:
+        await ctx.send(f"Fejl ved at give admin adgang til bruger {user_id}")
+
+
+@bot.command()
+async def user_stats(ctx):
+    """Show user statistics (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    stats = await message_db.get_user_stats()
+    if not stats:
+        await ctx.send("Ingen bruger data fundet.")
+        return
+    
+    # Format stats for Discord (limit to 10 users to avoid message length issues)
+    response = "**Bruger Statistikker:**\n```\n"
+    for i, user in enumerate(stats[:10]):
+        admin_flag = " (ADMIN)" if user['is_admin'] else ""
+        response += f"{user['display_name'] or 'Unnamed'}: {user['message_count']} beskeder{admin_flag}\n"
+    
+    if len(stats) > 10:
+        response += f"\n... og {len(stats) - 10} flere brugere"
+    
+    response += "```"
+    await ctx.send(response)
+
+
+@bot.command()
+async def db_stats(ctx):
+    """Show database statistics (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    stats = await message_db.get_db_stats()
+    if not stats:
+        await ctx.send("Ingen database data fundet.")
+        return
+    
+    response = f"""**Database Statistikker:**
+```yaml
+Beskeder: {stats.get('message_count', 0)}
+Brugere: {stats.get('user_count', 0)}
+Admins: {stats.get('admin_count', 0)}
+Ældste besked: {stats.get('oldest_message', 'N/A')}
+Nyeste besked: {stats.get('newest_message', 'N/A')}
+```"""
+    await ctx.send(response)
+
+
 @bot.event
 async def on_message(message):  # used for searching for substrings
-    await log_message_daily(message)
+    await log_message_daily(message)  # Legacy system
+    await log_message_persistent(message)  # New persistent system
     # Vi vil ikke reagere på bots
     if message.author.bot:
         return
