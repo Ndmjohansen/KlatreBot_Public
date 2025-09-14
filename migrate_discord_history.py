@@ -255,54 +255,69 @@ class DiscordMigrator:
         try:
             logger.info("Generating embeddings for migrated messages...")
             
-            # Get messages without embeddings
-            messages_without_embeddings = await self.db.get_messages_without_embeddings(limit=1000)
+            total_processed = 0
+            total_success = 0
+            batch_size = 1000
             
-            if not messages_without_embeddings:
-                logger.info("No messages need embeddings")
-                return
-            
-            logger.info(f"Found {len(messages_without_embeddings)} messages needing embeddings")
-            
-            success_count = 0
-            for i, message in enumerate(messages_without_embeddings):
-                try:
-                    # Skip command messages (starting with !)
-                    if message['content'].startswith('!'):
-                        logger.debug(f"Skipping command message {message['discord_message_id']}")
-                        continue
-                    
-                    # Generate embedding
-                    embedding = await self.embedding_service.generate_embedding(message['content'])
-                    if embedding:
-                        # Store in database (this will also store in ChromaDB if available)
-                        success = await self.db.store_message_embedding(
-                            message['discord_message_id'], 
-                            embedding, 
-                            self.embedding_service.embedding_model
-                        )
-                        if success:
-                            success_count += 1
-                            logger.debug(f"Generated embedding for message {message['discord_message_id']}")
-                        else:
-                            logger.error(f"Failed to store embedding for message {message['discord_message_id']}")
-                    else:
-                        logger.error(f"Failed to generate embedding for message {message['discord_message_id']}")
-                    
-                    # Rate limiting
-                    if (i + 1) % 10 == 0:
-                        await asyncio.sleep(self.embedding_service.rate_limit_delay)
-                        logger.info(f"Processed {i + 1}/{len(messages_without_embeddings)} messages")
+            while True:
+                # Get messages without embeddings
+                messages_without_embeddings = await self.db.get_messages_without_embeddings(limit=batch_size)
+                
+                if not messages_without_embeddings:
+                    logger.info("No more messages need embeddings")
+                    break
+                
+                logger.info(f"Found {len(messages_without_embeddings)} messages needing embeddings (batch)")
+                
+                batch_success = 0
+                for i, message in enumerate(messages_without_embeddings):
+                    try:
+                        # Skip command messages (starting with !)
+                        if message['content'].startswith('!'):
+                            logger.debug(f"Skipping command message {message['discord_message_id']}")
+                            continue
                         
-                except Exception as e:
-                    logger.error(f"Error processing message {message['discord_message_id']}: {e}")
-                    continue
+                        # Generate embedding
+                        embedding = await self.embedding_service.generate_embedding(message['content'])
+                        if embedding:
+                            # Store in database (this will also store in ChromaDB if available)
+                            success = await self.db.store_message_embedding(
+                                message['discord_message_id'], 
+                                embedding, 
+                                self.embedding_service.embedding_model
+                            )
+                            if success:
+                                batch_success += 1
+                                logger.debug(f"Generated embedding for message {message['discord_message_id']}")
+                            else:
+                                logger.error(f"Failed to store embedding for message {message['discord_message_id']}")
+                        else:
+                            logger.error(f"Failed to generate embedding for message {message['discord_message_id']}")
+                        
+                        # Rate limiting
+                        if (i + 1) % 10 == 0:
+                            await asyncio.sleep(self.embedding_service.rate_limit_delay)
+                            logger.info(f"Processed {i + 1}/{len(messages_without_embeddings)} messages in current batch")
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing message {message['discord_message_id']}: {e}")
+                        continue
+                
+                total_processed += len(messages_without_embeddings)
+                total_success += batch_success
+                
+                logger.info(f"Batch completed: {batch_success}/{len(messages_without_embeddings)} embeddings generated")
+                logger.info(f"Total progress: {total_success}/{total_processed} embeddings generated so far")
+                
+                # Show current stats
+                rag_stats = await self.db.get_rag_stats()
+                logger.info(f"Current RAG Stats: {rag_stats}")
             
-            logger.info(f"Generated {success_count}/{len(messages_without_embeddings)} embeddings")
+            logger.info(f"Embedding generation completed! Generated {total_success}/{total_processed} embeddings")
             
             # Show final stats
             rag_stats = await self.db.get_rag_stats()
-            logger.info(f"RAG Stats: {rag_stats}")
+            logger.info(f"Final RAG Stats: {rag_stats}")
             
             # Show ChromaDB stats if available
             if self.db.vector_available:
