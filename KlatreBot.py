@@ -18,6 +18,12 @@ from ChadLogger import ChadLogger
 import ProomptTaskQueue
 import json
 import os
+import aiosqlite
+from MessageDatabase import MessageDatabase
+from dotenv import load_dotenv
+
+# Load .env file if it exists
+load_dotenv()
 
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
@@ -28,9 +34,9 @@ parser.add_argument("--openaikey", type=str, help="OpenAI key")
 
 args = parser.parse_args()
 
-# Gem de læste argumenter i variabler
-discordkey = args.discordkey
-openaikey = args.openaikey
+# Gem de læste argumenter i variabler, med .env som fallback
+discordkey = args.discordkey or os.getenv('discordkey')
+openaikey = args.openaikey or os.getenv('openaikey')
 
 bot = commands.Bot(intents=discord.Intents.all(), command_prefix='!')
 # client = discord.Client(intents=discord.Intents.all())
@@ -38,6 +44,12 @@ DISCORD_CHANNEL_ID = 1003718776430268588
 DISCORD_SANDBOX_CHANNEL_ID = 1049312345068933134
 startTime = datetime.datetime.now()
 KlatreGPT().set_openai_key(openaikey)
+
+# Initialize database
+message_db = MessageDatabase()
+
+# Initialize RAG services
+rag_initialized = False
 
 
 def get_random_svar():
@@ -162,7 +174,7 @@ async def go_to_bed(message):
 DAILY_LOG_PATH = "daily_message_log.json"
 
 
-# Helper to append a message to the daily log
+# Helper to append a message to the daily log (legacy system)
 async def log_message_daily(message):
     now = datetime.datetime.now()
     if now.hour < 8 or (now.hour == 17 and now.minute > 30) or now.hour > 17:
@@ -199,6 +211,70 @@ async def log_message_daily(message):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+# Helper to log message to persistent database
+async def log_message_persistent(message):
+    """Log message to SQLite database for RAG system"""
+    try:
+        # Skip bot messages
+        if message.author.bot:
+            return
+        
+        # Determine message type
+        message_type = 'command' if message.content.startswith('!') else 'text'
+        
+        # Resolve mentions in content
+        content = message.content
+        for mention in message.mentions:
+            user = message.guild.get_member(mention.id)
+            if user:
+                mention_str = f"<@{mention.id}>"
+                name = KlatreGPT.get_name(user)
+                content = content.replace(mention_str, f"@{name}")
+        
+        # Log to database
+        success = await message_db.log_message(
+            discord_message_id=message.id,
+            discord_channel_id=message.channel.id,
+            discord_user_id=message.author.id,
+            content=content,
+            message_type=message_type,
+            timestamp=message.created_at
+        )
+        
+        if not success:
+            ChadLogger.log(f"Failed to log message {message.id} to database")
+            return
+        
+        # Generate embedding for RAG system if RAG is initialized
+        # Only embed text messages, not commands (messages starting with !)
+        if rag_initialized and KlatreGPT().embedding_service and not content.startswith('!'):
+            try:
+                # Generate embedding for the message content
+                embedding = await KlatreGPT().embedding_service.generate_embedding(content)
+                if embedding:
+                    # Store the embedding in the database (both SQLite and ChromaDB)
+                    embed_success = await message_db.store_message_embedding(
+                        message.id, 
+                        embedding, 
+                        KlatreGPT().embedding_service.embedding_model
+                    )
+                    if embed_success:
+                        ChadLogger.log(f"Generated embedding for message {message.id}")
+                    else:
+                        ChadLogger.log(f"Failed to store embedding for message {message.id}")
+                else:
+                    ChadLogger.log(f"Failed to generate embedding for message {message.id}")
+            except Exception as embed_error:
+                ChadLogger.log(f"Error generating embedding for message {message.id}: {embed_error}")
+        elif content.startswith('!'):
+            ChadLogger.log(f"Skipping embedding for command message: {content[:50]}...")
+        
+    except Exception as e:
+        ChadLogger.log(f"Error logging message to database: {e}")
+        import traceback
+        ChadLogger.log(f"Traceback: {traceback.format_exc()}")
+
+
 # Background task to reset the log at midnight
 async def reset_daily_log_task():
     while True:
@@ -215,6 +291,20 @@ async def reset_daily_log_task():
 async def on_ready():
     # Things to do when connecting
     ChadLogger.log("(Re)connected to discord!")
+    # Initialize database
+    await message_db.initialize()
+    ChadLogger.log("Database initialized!")
+    
+    # Initialize RAG services
+    global rag_initialized
+    try:
+        KlatreGPT().initialize_rag(message_db)
+        rag_initialized = True
+        ChadLogger.log("RAG services initialized!")
+    except Exception as e:
+        ChadLogger.log(f"Failed to initialize RAG services: {e}")
+        rag_initialized = False
+    
     # Start/reset log task
     bot.loop.create_task(reset_daily_log_task())
 
@@ -233,8 +323,10 @@ async def on_reaction_add(reaction, user):
 @bot.command()
 async def gpt(ctx):
     context_msgs = await KlatreGPT.get_recent_messages(ctx.channel.id, bot)
+    # Pass user ID for RAG context
+    user_id = ctx.author.id if rag_initialized else None
     await ProomptTaskQueue.ElaborateQueueSystem().task_queue.put(
-        ProomptTaskQueue.GPTTask(ctx, context_msgs))
+        ProomptTaskQueue.GPTTask(ctx, context_msgs, user_id))
 
 @bot.command()
 async def referat(ctx):
@@ -392,9 +484,292 @@ async def clear(ctx):
         await ctx.channel.send("Logs cleared!")
 
 
+# Admin commands for database management
+@bot.command()
+async def set_display_name(ctx, user_id: int, *, display_name: str):
+    """Set display name for a user (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    success = await message_db.set_display_name(user_id, display_name)
+    if success:
+        await ctx.send(f"Display name sat til '{display_name}' for bruger {user_id}")
+    else:
+        await ctx.send(f"Fejl ved at sætte display name for bruger {user_id}")
+
+
+@bot.command()
+async def make_admin(ctx, user_id: int):
+    """Grant admin access to a user (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    success = await message_db.make_admin(user_id)
+    if success:
+        await ctx.send(f"Admin adgang givet til bruger {user_id}")
+    else:
+        await ctx.send(f"Fejl ved at give admin adgang til bruger {user_id}")
+
+
+@bot.command()
+async def user_stats(ctx):
+    """Show user statistics (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    stats = await message_db.get_user_stats()
+    if not stats:
+        await ctx.send("Ingen bruger data fundet.")
+        return
+    
+    # Format stats for Discord (limit to 10 users to avoid message length issues)
+    response = "**Bruger Statistikker:**\n```\n"
+    for i, user in enumerate(stats[:10]):
+        admin_flag = " (ADMIN)" if user['is_admin'] else ""
+        response += f"{user['display_name'] or 'Unnamed'}: {user['message_count']} beskeder{admin_flag}\n"
+    
+    if len(stats) > 10:
+        response += f"\n... og {len(stats) - 10} flere brugere"
+    
+    response += "```"
+    await ctx.send(response)
+
+
+@bot.command()
+async def db_stats(ctx):
+    """Show database statistics (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    stats = await message_db.get_db_stats()
+    if not stats:
+        await ctx.send("Ingen database data fundet.")
+        return
+    
+    response = f"""**Database Statistikker:**
+```yaml
+Beskeder: {stats.get('message_count', 0)}
+Brugere: {stats.get('user_count', 0)}
+Admins: {stats.get('admin_count', 0)}
+Ældste besked: {stats.get('oldest_message', 'N/A')}
+Nyeste besked: {stats.get('newest_message', 'N/A')}
+```"""
+    await ctx.send(response)
+
+
+# RAG Admin Commands
+@bot.command()
+async def rag_stats(ctx):
+    """Show RAG system statistics (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    if not rag_initialized:
+        await ctx.send("RAG system er ikke initialiseret.")
+        return
+    
+    try:
+        stats = await KlatreGPT().rag_query_service.get_rag_insights()
+        
+        response = f"""**RAG System Statistikker:**
+```yaml
+Beskeder med embeddings: {stats.get('messages_with_embeddings', 0)}
+Totale beskeder: {stats.get('total_messages', 0)}
+Embedding dækning: {stats.get('embedding_coverage', 0):.1%}
+Embedding model: {stats.get('embedding_model', 'N/A')}
+Similarity threshold: {stats.get('similarity_threshold', 0.7)}
+```"""
+        await ctx.send(response)
+        
+    except Exception as e:
+        await ctx.send(f"Fejl ved at hente RAG statistikker: {e}")
+
+
+@bot.command()
+async def generate_embeddings(ctx, limit: int = 100):
+    """Generate embeddings for messages (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    if not rag_initialized:
+        await ctx.send("RAG system er ikke initialiseret.")
+        return
+    
+    await ctx.send(f"Genererer embeddings for {limit} beskeder...")
+    
+    try:
+        success_count = await KlatreGPT().embedding_service.generate_message_embeddings(limit)
+        await ctx.send(f"Genererede {success_count} embeddings succesfuldt!")
+        
+    except Exception as e:
+        await ctx.send(f"Fejl ved at generere embeddings: {e}")
+
+
+
+
+@bot.command()
+async def rag_search(ctx, *, query: str):
+    """Search for similar messages using RAG (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    if not rag_initialized:
+        await ctx.send("RAG system er ikke initialiseret.")
+        return
+    
+    try:
+        results = await KlatreGPT().rag_query_service.search_by_topic(query, limit=5)
+        
+        if not results:
+            await ctx.send("Ingen lignende beskeder fundet.")
+            return
+        
+        response = f"**Søgeresultater for '{query}':**\n"
+        for i, result in enumerate(results, 1):
+            similarity = result['similarity']
+            content = result['content'][:100] + "..." if len(result['content']) > 100 else result['content']
+            response += f"{i}. ({similarity:.2f}) {result['display_name']}: {content}\n"
+        
+        await ctx.send(response)
+        
+    except Exception as e:
+        await ctx.send(f"Fejl ved søgning: {e}")
+
+
+@bot.command()
+async def rag_toggle(ctx):
+    """Toggle RAG system on/off (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    global rag_initialized
+    rag_initialized = not rag_initialized
+    
+    status = "aktiveret" if rag_initialized else "deaktiveret"
+    await ctx.send(f"RAG system er nu {status}.")
+
+
+@bot.command()
+async def find_user(ctx, *, name: str):
+    """Find user by display name (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    try:
+        # Try exact match first
+        user = await message_db.get_user_by_display_name(name)
+        if user:
+            response = f"**Bruger fundet:**\n```yaml\nNavn: {user['display_name']}\nID: {user['discord_user_id']}\nBeskeder: {user['message_count']}\nAdmin: {user['is_admin']}\n```"
+            await ctx.send(response)
+            return
+        
+        # Try fuzzy search
+        similar_users = await message_db.search_users_by_name(name)
+        if similar_users:
+            response = f"**Lignende brugere fundet:**\n```yaml\n"
+            for user in similar_users[:5]:
+                response += f"Navn: {user['display_name']}\nID: {user['discord_user_id']}\nBeskeder: {user['message_count']}\n---\n"
+            response += "```"
+            await ctx.send(response)
+        else:
+            await ctx.send(f"Ingen brugere fundet med navn '{name}'")
+            
+    except Exception as e:
+        await ctx.send(f"Fejl ved søgning efter bruger: {e}")
+
+
+@bot.command()
+async def test_user_query(ctx, *, query: str):
+    """Test user query parsing (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    if not rag_initialized:
+        await ctx.send("RAG system er ikke initialiseret.")
+        return
+    
+    try:
+        target_user, target_user_id, time_reference, is_user_query, target_users, query_type = await KlatreGPT().rag_query_service.parse_user_query(query)
+        
+        response = f"**Query Analysis:**\n```yaml\n"
+        response += f"Query: {query}\n"
+        response += f"Target Users: {target_users}\n"
+        response += f"Primary User: {target_user}\n"
+        response += f"Primary User ID: {target_user_id}\n"
+        response += f"Time Reference: {time_reference} days ago\n"
+        response += f"Query Type: {query_type}\n"
+        response += f"Is Factual Query: {is_user_query}\n"
+        response += "```"
+        
+        await ctx.send(response)
+        
+    except Exception as e:
+        await ctx.send(f"Fejl ved analyse af query: {e}")
+
+
+@bot.command()
+async def test_mention(ctx, *, query: str):
+    """Test @mention resolution (admin only)"""
+    if not await message_db.is_admin(ctx.author.id):
+        await ctx.send("Du har ikke adgang til denne kommando.")
+        return
+    
+    if not rag_initialized:
+        await ctx.send("RAG system er ikke initialiseret.")
+        return
+    
+    try:
+        # Show original query
+        response = f"**@Mention Resolution Test:**\n```yaml\n"
+        response += f"Original Query: {query}\n"
+        
+        # Test mention detection
+        import re
+        mention_pattern = r'<@!?(\d+)>'
+        mentions = re.findall(mention_pattern, query)
+        response += f"Detected Mentions: {mentions}\n"
+        
+        # Test user resolution
+        if mentions:
+            response += f"\nMention Resolution:\n"
+            for mention_id in mentions:
+                user_info = await message_db.get_user_by_id(int(mention_id))
+                if user_info:
+                    response += f"  @{mention_id} → {user_info['display_name']} (database display name)\n"
+                else:
+                    response += f"  @{mention_id} → Not found in database\n"
+        
+        # Test full query parsing
+        target_user, target_user_id, time_reference, is_user_query, target_users, query_type = await KlatreGPT().rag_query_service.parse_user_query(query)
+        response += f"\nFinal Parsing:\n"
+        response += f"  Target User: {target_user}\n"
+        response += f"  Target User ID: {target_user_id}\n"
+        response += f"  Time Reference: {time_reference} days ago\n"
+        response += f"  Is User Query: {is_user_query}\n"
+        response += f"  Target Users: {target_users}\n"
+        response += f"  Query Type: {query_type}\n"
+        response += "```"
+        
+        await ctx.send(response)
+        
+    except Exception as e:
+        await ctx.send(f"Fejl ved @mention test: {e}")
+
+
 @bot.event
 async def on_message(message):  # used for searching for substrings
-    await log_message_daily(message)
+    await log_message_daily(message)  # Legacy system
+    await log_message_persistent(message)  # New persistent system
     # Vi vil ikke reagere på bots
     if message.author.bot:
         return
