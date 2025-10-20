@@ -22,10 +22,10 @@ jobs:
             source .venv/bin/activate
             pip install -r requirements.txt
             
-            # Update environment file with secrets
-            sudo tee /etc/klatrebot/klatrebot.env > /dev/null <<EOF
-            DISCORDKEY=${{ secrets.BOT_KEY}}
-            OPENAIKEY=${{ secrets.OPENAI_API}}
+            # Update .env file with secrets
+            tee .env > /dev/null <<EOF
+            discordkey=${{ secrets.BOT_KEY}}
+            openaikey=${{ secrets.OPENAI_API}}
             EOF
             
             # Update service file and restart
