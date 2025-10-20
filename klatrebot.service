@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/KlatreBot/KlatreBot_Public
-Environment=PATH=/home/pi/KlatreBot/KlatreBot_Public/.venv/bin
+User=Admin
+Group=Admin
+WorkingDirectory=/home/Admin/KlatreBot/KlatreBot_Public
+Environment=PATH=/home/Admin/KlatreBot/KlatreBot_Public/.venv/bin
 EnvironmentFile=/etc/klatrebot/klatrebot.env
-ExecStart=/home/pi/KlatreBot/KlatreBot_Public/.venv/bin/python KlatreBot.py
+ExecStart=/home/Admin/KlatreBot/KlatreBot_Public/.venv/bin/python KlatreBot.py
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
@@ -23,7 +23,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/home/pi/KlatreBot/KlatreBot_Public
+ReadWritePaths=/home/Admin/KlatreBot/KlatreBot_Public
 
 # Resource limits
 LimitNOFILE=65536

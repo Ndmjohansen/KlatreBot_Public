@@ -12,24 +12,31 @@ SERVICE_NAME="klatrebot"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 ENV_DIR="/etc/klatrebot"
 ENV_FILE="${ENV_DIR}/klatrebot.env"
-USER="pi"
+
+# Detect current user and project directory
+if [ -n "$SUDO_USER" ]; then
+    USER="$SUDO_USER"
+else
+    USER="$(whoami)"
+fi
+
 PROJECT_DIR="/home/${USER}/KlatreBot/KlatreBot_Public"
 
 # Check if running as root
-if [[ $EUID -ne 0 ]]; then
+if [ "$EUID" -ne 0 ]; then
    echo "This script must be run as root or with sudo"
    exit 1
 fi
 
 # Check if project directory exists
-if [[ ! -d "$PROJECT_DIR" ]]; then
+if [ ! -d "$PROJECT_DIR" ]; then
     echo "Error: Project directory $PROJECT_DIR does not exist"
     echo "Please ensure KlatreBot is cloned to the correct location"
     exit 1
 fi
 
 # Check if virtual environment exists
-if [[ ! -d "$PROJECT_DIR/.venv" ]]; then
+if [ ! -d "$PROJECT_DIR/.venv" ]; then
     echo "Error: Virtual environment not found at $PROJECT_DIR/.venv"
     echo "Please create the virtual environment first:"
     echo "  cd $PROJECT_DIR"
