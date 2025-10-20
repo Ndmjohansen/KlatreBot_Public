@@ -23,7 +23,6 @@ SyslogIdentifier=klatrebot
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
 ReadWritePaths=/home/Admin/KlatreBot/KlatreBot_Public
 
 # Resource limits
