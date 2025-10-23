@@ -2,6 +2,7 @@ import datetime
 import random
 import re
 import sys
+import logging
 from openai import OpenAI
 import discord
 from discord.ext import commands
@@ -24,6 +25,22 @@ from dotenv import load_dotenv
 
 # Load .env file if it exists
 load_dotenv()
+
+# Configure logging for journalctl
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stderr)  # Send to stderr for journalctl
+    ]
+)
+
+# Set specific loggers to appropriate levels
+logging.getLogger('discord').setLevel(logging.WARNING)  # Reduce Discord spam
+logging.getLogger('discord.http').setLevel(logging.WARNING)
+logging.getLogger('openai').setLevel(logging.WARNING)  # Reduce OpenAI spam
+
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(
     description="Et script til at læse navngivne argumenter fra kommandolinjen.")
@@ -219,6 +236,8 @@ async def log_message_persistent(message):
         if message.author.bot:
             return
         
+        logger.debug(f"Logging message from {message.author.display_name}: {message.content[:50]}...")
+        
         # Determine message type
         message_type = 'command' if message.content.startswith('!') else 'text'
         
@@ -290,9 +309,12 @@ async def reset_daily_log_task():
 @bot.event
 async def on_ready():
     # Things to do when connecting
+    logger.info("Bot connected to Discord!")
     ChadLogger.log("(Re)connected to discord!")
+    
     # Initialize database
     await message_db.initialize()
+    logger.info("Database initialized successfully")
     ChadLogger.log("Database initialized!")
     
     # Initialize RAG services
@@ -300,13 +322,16 @@ async def on_ready():
     try:
         KlatreGPT().initialize_rag(message_db)
         rag_initialized = True
+        logger.info("RAG services initialized successfully")
         ChadLogger.log("RAG services initialized!")
     except Exception as e:
+        logger.error(f"Failed to initialize RAG services: {e}")
         ChadLogger.log(f"Failed to initialize RAG services: {e}")
         rag_initialized = False
     
     # Start/reset log task
     bot.loop.create_task(reset_daily_log_task())
+    logger.info("Bot startup completed")
 
 
 @bot.event
@@ -322,6 +347,7 @@ async def on_reaction_add(reaction, user):
 
 @bot.command()
 async def gpt(ctx):
+    logger.info(f"GPT command received from user {ctx.author.id} ({ctx.author.display_name})")
     context_msgs = await KlatreGPT.get_recent_messages(ctx.channel.id, message_db)
     # Pass user ID for RAG context
     user_id = ctx.author.id if rag_initialized else None
@@ -841,5 +867,7 @@ async def on_command_error(ctx: commands.Context, error):
         type(error), error, error.__traceback__)
 
 if __name__ == "__main__":
+    logger.info("Starting KlatreBot...")
     bot.on_command_error = on_command_error
+    logger.info("Bot configuration completed, starting Discord connection...")
     bot.run(discordkey)

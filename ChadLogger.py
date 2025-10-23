@@ -22,7 +22,7 @@ class ChadLogger:
         return cls._instance
 
     def log_message(self, message, details=None):
-        print(message)
+        print(message, file=sys.stderr)  # Send to stderr instead of stdout
         self.log.append(LogEntry(message, details))
 
     def query_logs(self, count=10):

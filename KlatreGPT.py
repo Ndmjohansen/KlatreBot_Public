@@ -2,6 +2,8 @@ import openai
 import re
 import datetime
 import os
+import logging
+import time
 from openai import AsyncOpenAI
 from ChadLogger import ChadLogger
 from RAGQueryService import RAGQueryService
@@ -15,6 +17,7 @@ class KlatreGPT:
     rag_query_service = None
     embedding_service = None
     message_db = None
+    logger = logging.getLogger(__name__)
 
     def __new__(self):
         if not hasattr(self, 'instance'):
@@ -67,16 +70,23 @@ If you have relevant context about the user, use it to make your response more p
 
     async def prompt_gpt(self, prompt_context, prompt_question, user_id=None, use_rag=True):
         if self.is_rate_limited():
+            self.logger.warning("Rate limit exceeded - rejecting request")
             return 'Nu slapper du fandme lige lidt af med de spørgsmål'
+        
+        start_time = time.time()
+        self.logger.info(f"Starting LLM request for user {user_id}: {prompt_question[:100]}...")
         
         try:
             # Use RAG if available and enabled
             if use_rag and self.rag_query_service:
+                rag_start = time.time()
                 # Check if this is a user-specific factual query
                 enhanced_context, is_factual_query = await self.rag_query_service.get_enhanced_context_for_user_query(
                     prompt_question, 
                     user_id
                 )
+                rag_time = time.time() - rag_start
+                self.logger.info(f"RAG context retrieval took {rag_time:.2f}s")
                 
                 # Add recent context if available
                 if prompt_context:
@@ -84,10 +94,19 @@ If you have relevant context about the user, use it to make your response more p
             else:
                 enhanced_context = prompt_context
                 is_factual_query = False
+                self.logger.info("RAG disabled - using only recent context")
             
             # Load system prompt from external file
             system_prompt = self.load_system_prompt()
             
+            # Log the full prompt being sent
+            full_prompt = f"CONTEXT:\n{enhanced_context}\n\nQUESTION: {prompt_question}"
+            self.logger.info(f"System prompt length: {len(system_prompt)} chars")
+            self.logger.info(f"User prompt length: {len(full_prompt)} chars")
+            self.logger.debug(f"System prompt: {system_prompt}")
+            self.logger.debug(f"User prompt: {full_prompt}")
+            
+            llm_start = time.time()
             response = await self.client.chat.completions.create(
                 model="gpt-5-mini",
                 messages=[
@@ -97,12 +116,24 @@ If you have relevant context about the user, use it to make your response more p
                     },
                     {
                         "role": "user",
-                        "content": f"CONTEXT:\n{enhanced_context}\n\nQUESTION: {prompt_question}"
+                        "content": full_prompt
                     }
                 ]
             )
+            llm_time = time.time() - llm_start
+            total_time = time.time() - start_time
+            
             return_value = response.choices[0].message.content
+            
+            # Log response details
+            self.logger.info(f"LLM response time: {llm_time:.2f}s")
+            self.logger.info(f"Total request time: {total_time:.2f}s")
+            self.logger.info(f"Response length: {len(return_value)} chars")
+            self.logger.debug(f"LLM response: {return_value}")
+            
         except Exception as e:
+            total_time = time.time() - start_time
+            self.logger.error(f"LLM request failed after {total_time:.2f}s: {e}")
             return_value = f"Det kan jeg desværre ikke svare på. ({e})"
 
         return return_value
