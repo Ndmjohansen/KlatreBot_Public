@@ -137,7 +137,14 @@ async def gpt_response_poster():
             try:
                 if t.return_text == '':
                     t.return_text = 'Somehow we did not get a return text from OpenAI.'
-                await asyncio.wait_for(t.context.reply(t.return_text), 10)
+
+                # Send the response to Discord
+                response_message = await asyncio.wait_for(t.context.reply(t.return_text), 10)
+
+                # Log the bot's response to the database and vector DB
+                if response_message:
+                    await log_message_persistent(response_message)
+
             except Exception as error:
                 if t.send_to_discord_retry_count > 2:
                     ChadLogger.log(
@@ -197,7 +204,14 @@ async def log_message_daily(message):
     if now.hour < 8 or (now.hour == 17 and now.minute > 30) or now.hour > 17:
         return  # Only log between 08:00 and 17:30
     if message.content.lower().startswith('!referat'):
-        return  # Don't log !referat commands    # Resolve any mentions in the message content
+        return  # Don't log !referat commands
+
+    # Include bot messages for referat purposes so the bot can remember its own responses
+    # But exclude system messages and commands (except !gpt responses)
+    if message.author.bot and message.content.lower().startswith('!'):
+        return  # Skip bot commands, only include bot responses
+
+    # Resolve any mentions in the message content
     content = message.content
     for mention in message.mentions:
         user = message.guild.get_member(mention.id)
@@ -207,7 +221,7 @@ async def log_message_daily(message):
             content = content.replace(mention_str, f"@{name}")
               # Use the user's display name in the server
     display_name = KlatreGPT.get_name(message.author) if hasattr(message.author, 'nick') else str(message.author)
-            
+
     log_entry = {
         "user": display_name,
         "user_id": message.author.id,
@@ -232,15 +246,15 @@ async def log_message_daily(message):
 async def log_message_persistent(message):
     """Log message to SQLite database for RAG system"""
     try:
-        # Skip bot messages
-        if message.author.bot:
-            return
-        
         logger.debug(f"Logging message from {message.author.display_name}: {message.content[:50]}...")
-        
+
         # Determine message type
         message_type = 'command' if message.content.startswith('!') else 'text'
-        
+
+        # For bot messages, use a special message type
+        if message.author.bot:
+            message_type = 'bot_response'
+
         # Resolve mentions in content
         content = message.content
         for mention in message.mentions:
@@ -249,7 +263,7 @@ async def log_message_persistent(message):
                 mention_str = f"<@{mention.id}>"
                 name = KlatreGPT.get_name(user)
                 content = content.replace(mention_str, f"@{name}")
-        
+
         # Log to database
         success = await message_db.log_message(
             discord_message_id=message.id,
@@ -259,22 +273,22 @@ async def log_message_persistent(message):
             message_type=message_type,
             timestamp=message.created_at
         )
-        
+
         if not success:
             ChadLogger.log(f"Failed to log message {message.id} to database")
             return
-        
+
         # Generate embedding for RAG system if RAG is initialized
-        # Only embed text messages, not commands (messages starting with !)
-        if rag_initialized and KlatreGPT().embedding_service and not content.startswith('!'):
+        # Generate embeddings for text messages, bot responses, but not commands (messages starting with !)
+        if rag_initialized and KlatreGPT().embedding_service and (not content.startswith('!') or message_type == 'bot_response'):
             try:
                 # Generate embedding for the message content
                 embedding = await KlatreGPT().embedding_service.generate_embedding(content)
                 if embedding:
                     # Store the embedding in the database (both SQLite and ChromaDB)
                     embed_success = await message_db.store_message_embedding(
-                        message.id, 
-                        embedding, 
+                        message.id,
+                        embedding,
                         KlatreGPT().embedding_service.embedding_model
                     )
                     if embed_success:
@@ -285,9 +299,9 @@ async def log_message_persistent(message):
                     ChadLogger.log(f"Failed to generate embedding for message {message.id}")
             except Exception as embed_error:
                 ChadLogger.log(f"Error generating embedding for message {message.id}: {embed_error}")
-        elif content.startswith('!'):
+        elif content.startswith('!') and message_type != 'bot_response':
             ChadLogger.log(f"Skipping embedding for command message: {content[:50]}...")
-        
+
     except Exception as e:
         ChadLogger.log(f"Error logging message to database: {e}")
         import traceback
@@ -311,12 +325,17 @@ async def on_ready():
     # Things to do when connecting
     logger.info("Bot connected to Discord!")
     ChadLogger.log("(Re)connected to discord!")
-    
+
+    # Ensure bot user exists in database with proper display name
+    bot_display_name = KlatreGPT.get_name(bot.user) if hasattr(bot.user, 'nick') else str(bot.user)
+    await message_db.upsert_user(bot.user.id, bot_display_name, is_admin=False)
+    logger.info(f"Bot user initialized in database: {bot_display_name} ({bot.user.id})")
+
     # Initialize database
     await message_db.initialize()
     logger.info("Database initialized successfully")
     ChadLogger.log("Database initialized!")
-    
+
     # Initialize RAG services
     global rag_initialized
     try:
@@ -328,7 +347,7 @@ async def on_ready():
         logger.error(f"Failed to initialize RAG services: {e}")
         ChadLogger.log(f"Failed to initialize RAG services: {e}")
         rag_initialized = False
-    
+
     # Start/reset log task
     bot.loop.create_task(reset_daily_log_task())
     logger.info("Bot startup completed")

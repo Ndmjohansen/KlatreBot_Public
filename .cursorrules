@@ -1,0 +1,7 @@
+# KlatreBot Project Rules
+
+## Virtual Environment
+- The Python virtual environment for this project is named `KlatreBot` (not `.venv`)
+- To activate: `KlatreBot\Scripts\Activate.ps1` (on Windows/PowerShell)
+- The virtual environment contains all project dependencies
+- The virtual environment should always be activated before running KlatreBot or associated project code
