@@ -411,6 +411,7 @@ class RAGQueryService:
                             time_reference
                         )
                         if user_messages:
+                            context_parts.append(f"RAG CONTEXT:")
                             context_parts.append(f"MESSAGES FROM {user['display_name'].upper()}:")
                             for msg in user_messages[:3]:  # Limit per user
                                 timestamp = msg['timestamp']
@@ -432,6 +433,7 @@ class RAGQueryService:
                             time_reference
                         )
                         if user_messages:
+                            context_parts.append(f"RAG CONTEXT:")
                             context_parts.append(f"MESSAGES FROM {user_name.upper()}:")
                             for msg in user_messages[:5]:  # Limit per user
                                 timestamp = msg['timestamp']
@@ -447,6 +449,7 @@ class RAGQueryService:
                 # Fall back to general search
                 relevant_messages = await self.find_relevant_context(query, asking_user_id)
                 if relevant_messages:
+                    context_parts.append("RAG CONTEXT:")
                     context_parts.append("RELEVANT MESSAGES:")
                     for msg in relevant_messages[:self.max_context_messages]:
                         timestamp = msg['timestamp']

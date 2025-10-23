@@ -322,7 +322,7 @@ async def on_reaction_add(reaction, user):
 
 @bot.command()
 async def gpt(ctx):
-    context_msgs = await KlatreGPT.get_recent_messages(ctx.channel.id, bot)
+    context_msgs = await KlatreGPT.get_recent_messages(ctx.channel.id, message_db)
     # Pass user ID for RAG context
     user_id = ctx.author.id if rag_initialized else None
     await ProomptTaskQueue.ElaborateQueueSystem().task_queue.put(

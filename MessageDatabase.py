@@ -704,6 +704,37 @@ class MessageDatabase:
             self.logger.error(f"Error finding user by ID: {e}")
             return None
     
+    async def get_recent_messages_from_db(self, channel_id: int, limit: int = 10) -> str:
+        """Get recent messages from database formatted for context"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT m.content, u.display_name, m.timestamp, m.message_type
+                    FROM messages m
+                    JOIN users u ON m.discord_user_id = u.discord_user_id
+                    WHERE m.discord_channel_id = ? 
+                    AND u.display_name IS NOT NULL
+                    AND m.message_type != 'command'
+                    ORDER BY m.timestamp DESC
+                    LIMIT ?
+                """, (channel_id, limit))
+                
+                rows = await cursor.fetchall()
+                
+                # Format messages in reverse chronological order (oldest first)
+                messages = []
+                for row in reversed(rows):
+                    content, display_name, timestamp, message_type = row
+                    # Skip empty messages
+                    if content and content.strip():
+                        messages.append(f'"{display_name}: {content}"')
+                
+                return '\n'.join(messages)
+                
+        except Exception as e:
+            self.logger.error(f"Error getting recent messages from database: {e}")
+            return ""
+    
     async def get_rag_stats(self) -> Dict[str, Any]:
         """Get RAG-specific statistics"""
         try:

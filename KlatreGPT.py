@@ -1,6 +1,7 @@
 import openai
 import re
 import datetime
+import os
 from openai import AsyncOpenAI
 from ChadLogger import ChadLogger
 from RAGQueryService import RAGQueryService
@@ -35,6 +36,22 @@ class KlatreGPT:
         self.embedding_service = RAGEmbeddingService(self.client, message_db)
         self.rag_query_service = RAGQueryService(message_db, self.embedding_service)
 
+    def load_system_prompt(self):
+        """Load system prompt from external file"""
+        try:
+            prompt_file_path = os.path.join(os.path.dirname(__file__), 'klatrebot_prompt.txt')
+            with open(prompt_file_path, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+        except FileNotFoundError:
+            ChadLogger.log("Warning: klatrebot_prompt.txt not found, using default prompt")
+            return """You are a danish-speaking chat bot, with an edgy attitude. 
+You answer as if you are a teenage zoomer. 
+You are provided some context from the chat and potentially relevant historical messages.
+Use the context to give more personalized and relevant answers.
+Limit your answers to 250 words or less. 
+Do not answer with "Google it yourself"
+If you have relevant context about the user, use it to make your response more personal and accurate."""
+
     def is_rate_limited(self):
         new_stamp = datetime.datetime.now()
         self.timestamps.append(new_stamp)
@@ -63,19 +80,13 @@ class KlatreGPT:
                 
                 # Add recent context if available
                 if prompt_context:
-                    enhanced_context = f"RECENT MESSAGES:\n{prompt_context}\n\n{enhanced_context}" if enhanced_context else f"RECENT MESSAGES:\n{prompt_context}"
+                    enhanced_context = f"RECENT CHAT CONTEXT:\n{prompt_context}\n\nRAG CONTEXT:\n{enhanced_context}" if enhanced_context else f"RECENT CHAT CONTEXT:\n{prompt_context}"
             else:
                 enhanced_context = prompt_context
                 is_factual_query = False
             
-            # Use the same edgy zoomer personality for all responses
-            system_prompt = """You are a danish-speaking chat bot, with an edgy attitude. 
-You answer as if you are a teenage zoomer. 
-You are provided some context from the chat and potentially relevant historical messages.
-Use the context to give more personalized and relevant answers.
-Limit your answers to 60 words or less. 
-Do not answer with "Google it yourself"
-If you have relevant context about the user, use it to make your response more personal and accurate."""
+            # Load system prompt from external file
+            system_prompt = self.load_system_prompt()
             
             response = await self.client.chat.completions.create(
                 model="gpt-5-mini",
@@ -97,11 +108,27 @@ If you have relevant context about the user, use it to make your response more p
         return return_value
 
     @staticmethod
-    async def get_recent_messages(channel_id, client):
+    async def get_recent_messages(channel_id, message_db=None):
+        """Get recent messages from database if available, otherwise fallback to Discord API"""
+        if message_db:
+            try:
+                # Try to get recent messages from database first
+                recent_messages = await message_db.get_recent_messages_from_db(channel_id, limit=10)
+                if recent_messages:
+                    return recent_messages
+            except Exception as e:
+                ChadLogger.log(f"Failed to get recent messages from database: {e}")
+        
+        # Fallback to Discord API (original implementation)
+        return await KlatreGPT._get_recent_messages_from_discord(channel_id, None)
+    
+    @staticmethod
+    async def _get_recent_messages_from_discord(channel_id, client):
+        """Original Discord API implementation as fallback"""
         id_pattern = r"<@\d*>"
         messages = ''
         channel = client.get_channel(channel_id)
-        async for message in channel.history(limit=5):
+        async for message in channel.history(limit=10):
             # ChadLogger.log(f"MESSAGE: {message.content}")
             inner_message = ''
             for match in re.findall(id_pattern, message.content):
