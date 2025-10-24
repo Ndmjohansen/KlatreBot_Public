@@ -258,6 +258,7 @@ If you have relevant context about the user, use it to make your response more p
             self.logger.info("Planner failed - falling back to legacy single-call LLM behavior")
             try:
                 full_prompt = f"CONTEXT:\n{enhanced_context}\n\nQUESTION: {prompt_question}"
+                print("FALLBACK PROMPT:\n" + full_prompt)  # Debug output
                 llm_start = time.time()
                 response = await self.client.chat.completions.create(
                     model="gpt-4o-mini",
@@ -292,9 +293,10 @@ If you have relevant context about the user, use it to make your response more p
             f"RETRIEVED_INFO:\n{tool_outputs_block}\n\n"
             f"FINAL INSTRUCTIONS:\n{final_instructions_block}\n\n"
             f"QUESTION: {prompt_question}\n\n"
-            "Compose a concise answer (max 250 words). Use the retrieved information as if it were your own memory — do NOT state that the information came from a tool, database, or 'RAG'. "
+            "Compose a concise answer (max 125 words). Use the retrieved information as if it were your own memory — do NOT state that the information came from a tool, database, or 'RAG'. "
             "Do not include phrases like '(fra RAG)', 'from RAG', or 'tool outputs'. Integrate facts naturally and avoid exposing retrieval metadata. Keep the bot voice as specified by the system prompt."
         )
+        print("FINAL PROMPT:\n" + final_prompt)  # Debug output
 
         # Call final LLM to compose the answer
         try:

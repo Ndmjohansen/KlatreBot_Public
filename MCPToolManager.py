@@ -83,6 +83,12 @@ class MCPToolManager:
             - Otherwise, if `query` is provided, perform a general relevance-based context search.
             - Returns a consistent dict with `query` and `results`.
             """
+            # Safe type casting for int params (handles LLM str outputs like "20")
+            limit = int(limit) if limit is not None else 20
+            user_id = int(user_id) if user_id is not None else None
+            target_user_id = int(target_user_id) if target_user_id is not None else None
+            days_back = int(days_back) if days_back is not None else None
+
             # Topic search wins if provided
             if topic is not None:
                 results = await self.rag.search_by_topic(topic, limit=limit)
@@ -104,20 +110,31 @@ class MCPToolManager:
         # Backwards-compatible wrappers that call the unified search_messages tool
         async def rag_search(topic: str, limit: int = 20):
             """Alias for topic-based semantic search. Preserve legacy output field 'topic'."""
+            # Safe casting
+            limit = int(limit) if limit is not None else 20
             res = await search_messages(topic=topic, limit=limit)
             # search_messages returns {"query": topic, "results": [...]}; keep legacy key "topic"
             return {"topic": res.get("query"), "results": res.get("results")}
 
         async def find_relevant_context(query: str, user_id: Optional[int] = None, limit: int = 10):
             """Alias for a general relevance-based search."""
+            # Safe casting
+            limit = int(limit) if limit is not None else 10
+            user_id = int(user_id) if user_id is not None else None
             return await search_messages(query=query, user_id=user_id, limit=limit)
 
         async def user_messages(query: str, target_user_id: int, days_back: Optional[int] = None):
             """Alias for a user-specific search."""
+            # Safe casting
+            target_user_id = int(target_user_id)
+            days_back = int(days_back) if days_back is not None else None
             return await search_messages(query=query, target_user_id=target_user_id, days_back=days_back)
 
         async def conversation_summary(user_id: int, days: int = 7):
             """Get a textual conversation summary for a user."""
+            # Safe casting
+            user_id = int(user_id)
+            days = int(days)
             summary = await self.rag.get_conversation_summary(user_id, days=days)
             return {"user_id": user_id, "days": days, "summary": summary}
 
