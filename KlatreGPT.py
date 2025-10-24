@@ -271,6 +271,19 @@ If you have relevant context about the user, use it to make your response more p
                 llm_time = time.time() - llm_start
                 total_time = time.time() - start_time
                 return_value = response.choices[0].message.content
+                
+                # Post-process: Fix truncated user IDs (safety net)
+                import re
+                mention_pattern = r'<@!?(\d+)>'
+                mentions = re.findall(mention_pattern, return_value)
+                if mentions:
+                    for user_id in mentions:
+                        # Only fix obviously broken IDs (too short)
+                        if len(user_id) < 17:
+                            self.logger.warning(f"Detected truncated user ID: {user_id} ({len(user_id)} digits)")
+                            return_value = return_value.replace(f'<@{user_id}>', 'en bruger')
+                            return_value = return_value.replace(f'<@!{user_id}>', 'en bruger')
+                
                 self.logger.info(f"Legacy LLM response time: {llm_time:.2f}s, total {total_time:.2f}s")
                 return return_value
             except Exception as e:
@@ -295,7 +308,9 @@ If you have relevant context about the user, use it to make your response more p
             f"FINAL INSTRUCTIONS:\n{final_instructions_block}\n\n"
             f"QUESTION: {prompt_question}\n\n"
             "Compose a concise answer (max 125 words). Use the retrieved information as if it were your own memory — do NOT state that the information came from a tool, database, or 'RAG'. "
-            "Do not include phrases like '(fra RAG)', 'from RAG', or 'tool outputs'. Integrate facts naturally and avoid exposing retrieval metadata. Keep the bot voice as specified by the system prompt."
+            "Do not include phrases like '(fra RAG)', 'from RAG', or 'tool outputs'. Integrate facts naturally and avoid exposing retrieval metadata. "
+            "IMPORTANT: When mentioning users, copy user IDs exactly as they appear - never shorten or modify them. "
+            "Keep the bot voice as specified by the system prompt."
         )
         if 'pytest' in sys.modules:
             print("FINAL PROMPT:\n" + final_prompt)  # Debug output only in tests
@@ -313,6 +328,20 @@ If you have relevant context about the user, use it to make your response more p
             llm_time = time.time() - llm_start
             total_time = time.time() - start_time
             return_value = response.choices[0].message.content
+            
+            # Post-process: Fix truncated user IDs (safety net)
+            import re
+            mention_pattern = r'<@!?(\d+)>'
+            mentions = re.findall(mention_pattern, return_value)
+            if mentions:
+                for user_id in mentions:
+                    # Only fix obviously broken IDs (too short)
+                    if len(user_id) < 17:
+                        self.logger.warning(f"Detected truncated user ID: {user_id} ({len(user_id)} digits)")
+                        # Replace with generic term to avoid broken mentions
+                        return_value = return_value.replace(f'<@{user_id}>', 'en bruger')
+                        return_value = return_value.replace(f'<@!{user_id}>', 'en bruger')
+            
             self.logger.info(f"Final LLM compose time: {llm_time:.2f}s, total {total_time:.2f}s")
             self.logger.debug(f"Final composed response: {return_value}")
             return return_value
