@@ -1,5 +1,5 @@
 discord.py
-openai
+openai>=2.6.1
 Pillow
 requests
 python-dateutil

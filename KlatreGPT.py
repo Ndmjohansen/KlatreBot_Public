@@ -5,6 +5,7 @@ import os
 import logging
 import time
 from openai import AsyncOpenAI
+from openai.types.responses import Response
 from ChadLogger import ChadLogger
 from RAGQueryService import RAGQueryService
 from RAGEmbeddingService import RAGEmbeddingService
@@ -43,6 +44,48 @@ class KlatreGPT:
         self.rag_query_service = RAGQueryService(message_db, self.embedding_service)
         # Initialize MCP tool manager with local RAG tools. This can be extended later to call remote MCP tools.
         self.tool_manager = MCPToolManager(self.rag_query_service)
+
+        async def web_search(query: str, num_results: int = 5):
+            """Use OpenAI's native web search tool via Responses API to get up-to-date web results with citations."""
+            try:
+                # Use the Responses API for native web search
+                response: Response = await self.client.responses.create(
+                    model="gpt-4o-mini",  # Use a model that supports web search
+                    tools=[{"type": "web_search"}],
+                    input=query,
+                    include=["web_search_call.action.sources"]  # Include sources for full URLs
+                )
+                
+                # Extract the output text and annotations/citations
+                output_text = response.output_text if hasattr(response, 'output_text') else response.choices[0].message.content
+                sources = []
+                if hasattr(response, 'web_search_call') and response.web_search_call:
+                    sources = response.web_search_call.action.get('sources', []) if hasattr(response.web_search_call.action, 'get') else []
+                
+                # Parse annotations for inline citations if available
+                annotations = []
+                if hasattr(response, 'message') and response.message and hasattr(response.message.content[0], 'annotations'):
+                    annotations = response.message.content[0].annotations
+                
+                return {
+                    "query": query,
+                    "num_results": num_results,
+                    "output_text": output_text,
+                    "sources": sources,
+                    "annotations": annotations  # For citations like url_citation with start_index, url, title
+                }
+            except openai.APIError as e:
+                self.logger.error(f"OpenAI API error in web_search: {e}")
+                return {"error": f"Web search API error: {str(e)}"}
+            except Exception as e:
+                return {"error": f"Web search failed: {str(e)}"}
+
+        self.tool_manager.register_tool(
+            "web_search",
+            web_search,
+            description="Perform a native web search using OpenAI's built-in tool for current events, news, facts, or real-world data. Returns output text with citations and sources. Args: {query: str (required), num_results: int (default 5, but API handles internally)}",
+            schema={"query": "str", "num_results": "int"}
+        )
 
     def load_system_prompt(self):
         """Load system prompt from external file"""
@@ -122,7 +165,7 @@ If you have relevant context about the user, use it to make your response more p
             "  \"final_instructions\": \"instructions for final answer (tone / constraints)\",\n"
             "  \"refine\": false\n"
             "}\n"
-            "RAG tools (rag_search, find_relevant_context, user_messages, conversation_summary) should be used liberally. For factual/context-heavy queries, prefer exhaustive searches: use broader queries and larger 'limit' values to return many messages so the final answer can be well grounded. Prefer at most 2 tool calls. Only request more than 2 when necessary; if you request >2 include the field \"allow_extra_calls\": true and provide a short \"extra_call_justification\" explaining why additional calls are needed. Planner may request up to 4 calls. Each tool call may request many results (set 'limit' high) to allow comprehensive context retrieval."
+            "Use RAG tools (rag_search, find_relevant_context, user_messages, conversation_summary, search_messages) liberally for chat history and user context. For queries needing up-to-date or external information (news, weather, current events, facts not in chat), use the native web_search tool, which provides results with citations and sources. Prefer at most 2 tool calls total (e.g., one RAG + one web_search). Only request more than 2 when necessary; if you request >2 include the field \"allow_extra_calls\": true and provide a short \"extra_call_justification\" explaining why additional calls are needed. Planner may request up to 4 calls. Each tool call may request many results (set 'limit' high for RAG, num_results for web)."
         )
 
         # Call planner
@@ -131,7 +174,7 @@ If you have relevant context about the user, use it to make your response more p
         try:
             # Primary planner call
             planner_resp = await self.client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": planner_prompt_system},
                     {"role": "user", "content": planner_user_content}
@@ -154,7 +197,7 @@ If you have relevant context about the user, use it to make your response more p
                         "Please output the corrected JSON (no additional text)."
                     )
                     repair_resp = await self.client.chat.completions.create(
-                        model="gpt-5-mini",
+                        model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": planner_prompt_system},
                             {"role": "user", "content": repair_prompt}
@@ -210,14 +253,14 @@ If you have relevant context about the user, use it to make your response more p
             planner_failed = True
             final_instructions = ""
 
-        # If planner failed, fallback to legacy single-call flow
+        # If planner failed, fallback to legacy single-call LLM behavior
         if planner_failed:
             self.logger.info("Planner failed - falling back to legacy single-call LLM behavior")
             try:
                 full_prompt = f"CONTEXT:\n{enhanced_context}\n\nQUESTION: {prompt_question}"
                 llm_start = time.time()
                 response = await self.client.chat.completions.create(
-                    model="gpt-5-mini",
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": full_prompt}
@@ -257,7 +300,7 @@ If you have relevant context about the user, use it to make your response more p
         try:
             llm_start = time.time()
             response = await self.client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": final_prompt}
