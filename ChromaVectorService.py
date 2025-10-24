@@ -149,12 +149,19 @@ class ChromaVectorService:
                     # This provides much better separation between relevant and irrelevant results
                     similarity = distance
                     
-                    # Safely convert timestamp (handle both numeric and string types)
+                    # Safely convert timestamp (handle numeric, numeric string, and ISO format)
                     timestamp_value = metadata['timestamp']
                     if isinstance(timestamp_value, str):
-                        # If ChromaDB returned a string, convert to float first
-                        timestamp_value = float(timestamp_value)
-                    timestamp = datetime.datetime.fromtimestamp(timestamp_value)
+                        # Check if it's an ISO format datetime string
+                        if 'T' in timestamp_value or '-' in timestamp_value[:10]:
+                            # ISO format: convert to datetime directly
+                            timestamp = datetime.datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
+                        else:
+                            # Numeric string: convert to float then to datetime
+                            timestamp = datetime.datetime.fromtimestamp(float(timestamp_value))
+                    else:
+                        # Numeric value: convert directly to datetime
+                        timestamp = datetime.datetime.fromtimestamp(timestamp_value)
                     
                     similar_messages.append({
                         'discord_message_id': metadata['discord_message_id'],

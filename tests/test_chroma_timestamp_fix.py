@@ -15,9 +15,10 @@ from ChromaVectorService import ChromaVectorService
 @pytest.mark.asyncio
 async def test_chroma_handles_string_and_numeric_timestamps():
     """
-    Test that ChromaVectorService.search_similar() correctly handles both:
+    Test that ChromaVectorService.search_similar() correctly handles:
     1. Numeric timestamps (float) - the expected format
-    2. String timestamps - sometimes returned by ChromaDB
+    2. Numeric string timestamps - sometimes returned by ChromaDB
+    3. ISO format datetime strings - legacy data format
     """
     tmpdir = tempfile.mkdtemp(prefix="test_chroma_timestamp_")
     chroma_dir = os.path.join(tmpdir, "chroma_db")
@@ -153,8 +154,82 @@ async def test_chroma_search_with_date_filters():
             print(f"Warning: Failed to cleanup {tmpdir}: {e}")
 
 
+@pytest.mark.asyncio
+async def test_chroma_handles_iso_format_timestamps():
+    """
+    Test that ChromaVectorService correctly handles ISO format datetime strings
+    that might exist in legacy data stored in ChromaDB.
+    """
+    tmpdir = tempfile.mkdtemp(prefix="test_chroma_iso_timestamp_")
+    chroma_dir = os.path.join(tmpdir, "chroma_db")
+    
+    try:
+        # Initialize ChromaVectorService
+        chroma_service = ChromaVectorService(persist_directory=chroma_dir)
+        await chroma_service.initialize()
+        
+        # Manually insert a document with ISO format timestamp in metadata
+        # This simulates legacy data that might exist in the database
+        test_embedding = [0.2] * 1536
+        test_content = "Legacy message with ISO timestamp"
+        
+        # Store with ISO format timestamp directly in ChromaDB
+        # (bypassing the normal store_embedding method to simulate legacy data)
+        doc_id = "999999"
+        iso_timestamp = "2025-10-23T17:25:08.129000+00:00"
+        
+        chroma_service.collection.add(
+            ids=[doc_id],
+            embeddings=[test_embedding],
+            metadatas=[{
+                "discord_message_id": 999999,
+                "discord_user_id": 888,
+                "display_name": "LegacyUser",
+                "timestamp": iso_timestamp,  # ISO format string
+                "message_type": "text",
+                "content": test_content[:1000]
+            }],
+            documents=[test_content]
+        )
+        
+        print(f"Stored legacy data with ISO timestamp: {iso_timestamp}")
+        
+        # Now search for it - this should not crash even with ISO format timestamp
+        query_embedding = [0.2] * 1536
+        results = await chroma_service.search_similar(query_embedding, limit=5)
+        
+        # Verify we got results and they have proper datetime objects
+        assert len(results) > 0, "Expected at least one result"
+        
+        legacy_result = [r for r in results if r['discord_message_id'] == 999999]
+        assert len(legacy_result) == 1, "Expected to find the legacy message"
+        
+        result = legacy_result[0]
+        assert isinstance(result['timestamp'], datetime.datetime), \
+            f"Expected datetime.datetime, got {type(result['timestamp'])}"
+        
+        # Verify the timestamp was correctly parsed
+        expected_dt = datetime.datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
+        assert abs((result['timestamp'] - expected_dt).total_seconds()) < 1.0, \
+            f"Timestamp mismatch: expected {expected_dt}, got {result['timestamp']}"
+        
+        print(f"✓ Test passed: ChromaVectorService correctly handles ISO format timestamps")
+        print(f"  Stored ISO timestamp: {iso_timestamp}")
+        print(f"  Retrieved timestamp: {result['timestamp']}")
+        print(f"  Content: {result['content']}")
+        
+    finally:
+        # Cleanup
+        try:
+            shutil.rmtree(tmpdir)
+            print(f"Cleaned up temporary directory: {tmpdir}")
+        except Exception as e:
+            print(f"Warning: Failed to cleanup {tmpdir}: {e}")
+
+
 if __name__ == "__main__":
     import asyncio
     asyncio.run(test_chroma_handles_string_and_numeric_timestamps())
     asyncio.run(test_chroma_search_with_date_filters())
+    asyncio.run(test_chroma_handles_iso_format_timestamps())
 
