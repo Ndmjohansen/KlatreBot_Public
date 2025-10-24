@@ -59,7 +59,8 @@ class ChromaVectorService:
                 "discord_message_id": message_id,
                 "discord_user_id": discord_user_id,
                 "display_name": display_name,
-                "timestamp": timestamp.isoformat(),
+                # Store numeric epoch seconds for timestamp so ChromaDB numeric comparisons work
+                "timestamp": timestamp.timestamp(),
                 "message_type": message_type,
                 "content": content[:1000]  # Truncate content for metadata
             }
@@ -90,6 +91,23 @@ class ChromaVectorService:
                 return []
         
         try:
+            # Defensive type casting for parameters (handles potential str from LLM args)
+            limit = int(limit) if limit is not None else 10
+            user_id = int(user_id) if user_id is not None else None
+            
+            # Cast dates if they are strings (ISO format)
+            if start_date:
+                if isinstance(start_date, str):
+                    start_date = datetime.datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            else:
+                start_date = None
+                
+            if end_date:
+                if isinstance(end_date, str):
+                    end_date = datetime.datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            else:
+                end_date = None
+
             # Build where clause for filtering
             where_clause = {}
             conditions = []
@@ -98,10 +116,12 @@ class ChromaVectorService:
                 conditions.append({"discord_user_id": user_id})
             
             if start_date:
-                conditions.append({"timestamp": {"$gte": start_date.isoformat()}})
+                # Use numeric epoch seconds for comparisons
+                conditions.append({"timestamp": {"$gte": start_date.timestamp()}})
             
             if end_date:
-                conditions.append({"timestamp": {"$lte": end_date.isoformat()}})
+                # Use numeric epoch seconds for comparisons
+                conditions.append({"timestamp": {"$lte": end_date.timestamp()}})
             
             # Combine conditions with $and if multiple conditions exist
             if len(conditions) == 1:
@@ -133,7 +153,8 @@ class ChromaVectorService:
                         'discord_message_id': metadata['discord_message_id'],
                         'content': results['documents'][0][i],
                         'display_name': metadata['display_name'],
-                        'timestamp': datetime.datetime.fromisoformat(metadata['timestamp']),
+                        # Stored as epoch seconds — convert back to datetime
+                        'timestamp': datetime.datetime.fromtimestamp(metadata['timestamp']),
                         'message_type': metadata['message_type'],
                         'similarity': similarity
                     })
