@@ -91,6 +91,23 @@ class ChromaVectorService:
                 return []
         
         try:
+            # Defensive type casting for parameters (handles potential str from LLM args)
+            limit = int(limit) if limit is not None else 10
+            user_id = int(user_id) if user_id is not None else None
+            
+            # Cast dates if they are strings (ISO format)
+            if start_date:
+                if isinstance(start_date, str):
+                    start_date = datetime.datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            else:
+                start_date = None
+                
+            if end_date:
+                if isinstance(end_date, str):
+                    end_date = datetime.datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            else:
+                end_date = None
+
             # Build where clause for filtering
             where_clause = {}
             conditions = []
