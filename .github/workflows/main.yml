@@ -20,7 +20,7 @@ jobs:
             cd ~/KlatreBot/KlatreBot_Public/
             git pull
             source .venv/bin/activate
-            pip install -r requirements.txt
+            pip install --upgrade -r requirements.txt
             
             # Update .env file with secrets
             tee .env > /dev/null <<EOF
