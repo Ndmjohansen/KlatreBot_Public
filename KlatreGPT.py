@@ -275,7 +275,7 @@ If you have relevant context about the user, use it to make your response more p
             return f"Det kan jeg desværre ikke svare på. ({e})"
 
     @staticmethod
-    async def get_recent_messages(channel_id, message_db=None):
+    async def get_recent_messages(channel_id, message_db=None, client=None):
         """Get recent messages from database if available, otherwise fallback to Discord API"""
         if message_db:
             try:
@@ -286,12 +286,15 @@ If you have relevant context about the user, use it to make your response more p
             except Exception as e:
                 ChadLogger.log(f"Failed to get recent messages from database: {e}")
         
-        # Fallback to Discord API (original implementation)
-        return await KlatreGPT._get_recent_messages_from_discord(channel_id, None)
+        # Fallback to Discord API (original implementation). Accept an optional client.
+        return await KlatreGPT._get_recent_messages_from_discord(channel_id, client)
     
     @staticmethod
     async def _get_recent_messages_from_discord(channel_id, client):
         """Original Discord API implementation as fallback"""
+        if client is None:
+            ChadLogger.log("Discord client is None - cannot fetch history; returning empty context")
+            return ''
         id_pattern = r"<@\d*>"
         messages = ''
         channel = client.get_channel(channel_id)
