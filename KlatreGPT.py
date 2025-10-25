@@ -58,7 +58,6 @@ class KlatreGPT:
                 # Use the Responses API for native web search
                 response: Response = await self.client.responses.create(
                     model="gpt-5-mini",
-                    reasoning_effort="low",
                     tools=[{"type": "web_search"}],
                     input=query,
                     include=["web_search_call.action.sources"]  # Include sources for full URLs
