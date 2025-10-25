@@ -95,18 +95,11 @@ class ChromaVectorService:
             limit = int(limit) if limit is not None else 10
             user_id = int(user_id) if user_id is not None else None
             
-            # Cast dates if they are strings (ISO format)
-            if start_date:
-                if isinstance(start_date, str):
-                    start_date = datetime.datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-            else:
-                start_date = None
-                
-            if end_date:
-                if isinstance(end_date, str):
-                    end_date = datetime.datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-            else:
-                end_date = None
+            # Ensure dates are datetime objects (they should already be from the database)
+            if start_date and not isinstance(start_date, datetime.datetime):
+                raise TypeError(f"start_date must be a datetime object, got {type(start_date)}")
+            if end_date and not isinstance(end_date, datetime.datetime):
+                raise TypeError(f"end_date must be a datetime object, got {type(end_date)}")
 
             # Build where clause for filtering
             where_clause = {}
@@ -149,19 +142,9 @@ class ChromaVectorService:
                     # This provides much better separation between relevant and irrelevant results
                     similarity = distance
                     
-                    # Safely convert timestamp (handle numeric, numeric string, and ISO format)
+                    # Convert numeric epoch timestamp to datetime
                     timestamp_value = metadata['timestamp']
-                    if isinstance(timestamp_value, str):
-                        # Check if it's an ISO format datetime string
-                        if 'T' in timestamp_value or '-' in timestamp_value[:10]:
-                            # ISO format: convert to datetime directly
-                            timestamp = datetime.datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
-                        else:
-                            # Numeric string: convert to float then to datetime
-                            timestamp = datetime.datetime.fromtimestamp(float(timestamp_value))
-                    else:
-                        # Numeric value: convert directly to datetime
-                        timestamp = datetime.datetime.fromtimestamp(timestamp_value)
+                    timestamp = datetime.datetime.fromtimestamp(timestamp_value)
                     
                     similar_messages.append({
                         'discord_message_id': metadata['discord_message_id'],
@@ -240,11 +223,7 @@ class ChromaVectorService:
                         import pickle
                         embedding = pickle.loads(embedding_blob)
                         
-                        # Convert timestamp if it's a string
-                        if isinstance(timestamp, str):
-                            timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                        
-                        # Store in ChromaDB
+                        # Store in ChromaDB (timestamp is already datetime object from database)
                         success = await self.store_embedding(
                             message_id, embedding, content, display_name, timestamp, message_type, discord_user_id
                         )

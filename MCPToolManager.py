@@ -142,6 +142,17 @@ class MCPToolManager:
             # Safe casting
             user_id = int(user_id)
             days = int(days)
+            
+            # Validate Discord user ID (should be 17-20 digits)
+            if user_id < 10**16 or user_id > 10**20:
+                logger.warning(f"Invalid Discord user ID received in conversation_summary: {user_id} (expected 17-20 digit number)")
+                return {
+                    "user_id": user_id, 
+                    "days": days, 
+                    "summary": f"Error: Invalid user ID {user_id}. Discord user IDs must be 17-20 digit numbers.",
+                    "error": "invalid_user_id"
+                }
+            
             summary = await self.rag.get_conversation_summary(user_id, days=days)
             return {"user_id": user_id, "days": days, "summary": summary}
 
@@ -175,6 +186,6 @@ class MCPToolManager:
         self.register_tool(
             "conversation_summary",
             conversation_summary,
-            description="Get a summary of recent conversation for a user. Args: {user_id: int, days: int}",
+            description="Get a summary of recent conversation for a user. Args: {user_id: int (Discord user ID - must be the 18-19 digit Discord ID), days: int}",
             schema={"user_id": "int", "days": "int"}
         )

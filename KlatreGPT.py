@@ -188,8 +188,13 @@ If you have relevant context about the user, use it to make your response more p
                 tool_catalog = []
 
         planner_prompt_system = "You are a planner LLM. Given a user question and available tools, return a JSON object describing which tools to call and with which arguments. Respond with valid JSON only."
+        
+        # Prepare user metadata for planner
+        user_metadata = f"Asking user Discord ID: {user_id}" if user_id else "No user ID available"
+        
         planner_user_content = (
             f"Available tools:\n{json.dumps(tool_catalog, indent=2)}\n\n"
+            f"User Metadata:\n{user_metadata}\n\n"
             f"Context:\n{enhanced_context}\n\n"
             f"Question:\n{prompt_question}\n\n"
             "Return JSON with the following structure:\n"
@@ -198,7 +203,11 @@ If you have relevant context about the user, use it to make your response more p
             "  \"final_instructions\": \"instructions for final answer (tone / constraints)\",\n"
             "  \"refine\": false\n"
             "}\n"
-            "Use RAG tools (rag_search, find_relevant_context, user_messages, conversation_summary, search_messages) for chat history and user context. For queries needing up-to-date or external information (news, weather, current events, facts not in chat), use the native web_search tool, which provides results with citations and sources. Prefer at most 2 tool calls total (e.g., one RAG + one web_search). Only request more than 2 when necessary; if you request >2 include the field \"allow_extra_calls\": true and provide a short \"extra_call_justification\" explaining why additional calls are needed. Planner may request up to 4 calls. IMPORTANT: All RAG tools have a hard limit of 10 results maximum - do not request more than 10."
+            "Use RAG tools (rag_search, find_relevant_context, user_messages, conversation_summary, search_messages) for chat history and user context. "
+            "IMPORTANT: When using conversation_summary or other user-specific tools, use the 'Asking user Discord ID' provided above for the user_id parameter. "
+            "For queries needing up-to-date or external information (news, weather, current events, facts not in chat), use the native web_search tool, which provides results with citations and sources. "
+            "Prefer at most 2 tool calls total (e.g., one RAG + one web_search). Only request more than 2 when necessary; if you request >2 include the field \"allow_extra_calls\": true and provide a short \"extra_call_justification\" explaining why additional calls are needed. "
+            "Planner may request up to 4 calls. IMPORTANT: All RAG tools have a hard limit of 10 results maximum - do not request more than 10."
         )
 
         # Call planner

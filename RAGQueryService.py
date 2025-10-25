@@ -64,9 +64,6 @@ class RAGQueryService:
                 context_parts.append("RELEVANT CHAT HISTORY:")
                 for msg in relevant_messages[:self.max_context_messages]:
                     timestamp = msg['timestamp']
-                    if isinstance(timestamp, str):
-                        timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                    
                     context_parts.append(
                         f"{msg['display_name']} ({timestamp.strftime('%Y-%m-%d %H:%M')}): {msg['content']}"
                     )
@@ -145,9 +142,6 @@ class RAGQueryService:
             
             for msg in user_messages[:10]:  # Limit to 10 most recent
                 timestamp = msg['timestamp']
-                if isinstance(timestamp, str):
-                    timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                
                 summary_parts.append(
                     f"- {timestamp.strftime('%m/%d %H:%M')}: {msg['content'][:100]}..."
                 )
@@ -425,8 +419,6 @@ class RAGQueryService:
                             messages_to_add = min(2, max_total_messages - message_count)  # Limit per user
                             for msg in user_messages[:messages_to_add]:
                                 timestamp = msg['timestamp']
-                                if isinstance(timestamp, str):
-                                    timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                                 context_parts.append(
                                     f"{timestamp.strftime('%Y-%m-%d %H:%M')}: {msg['content']}"
                                 )
@@ -456,8 +448,6 @@ class RAGQueryService:
                             messages_to_add = min(len(user_messages), max_total_messages - message_count, 4)
                             for msg in user_messages[:messages_to_add]:
                                 timestamp = msg['timestamp']
-                                if isinstance(timestamp, str):
-                                    timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                                 context_parts.append(
                                     f"{timestamp.strftime('%Y-%m-%d %H:%M')}: {msg['content']}"
                                 )
@@ -473,9 +463,6 @@ class RAGQueryService:
                     context_parts.append("RELEVANT MESSAGES:")
                     for msg in relevant_messages[:self.max_context_messages]:
                         timestamp = msg['timestamp']
-                        if isinstance(timestamp, str):
-                            timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                        
                         context_parts.append(
                             f"{msg['display_name']} ({timestamp.strftime('%Y-%m-%d %H:%M')}): {msg['content']}"
                         )

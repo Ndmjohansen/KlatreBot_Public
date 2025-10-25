@@ -480,11 +480,7 @@ class MessageDatabase:
                         if row:
                             content, display_name, timestamp, message_type, discord_user_id = row
                             
-                            # Convert timestamp if it's a string
-                            if isinstance(timestamp, str):
-                                timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                            
-                            # Store in ChromaDB
+                            # Store in ChromaDB (timestamp is already datetime object from database)
                             await self.chroma_service.store_embedding(
                                 discord_message_id, embedding, content, display_name, timestamp, message_type, discord_user_id
                             )
