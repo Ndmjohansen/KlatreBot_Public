@@ -246,7 +246,7 @@ class RAGQueryService:
             """
             
             response = await self.embedding_service.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini",
                 messages=[
                     {
                         "role": "system",

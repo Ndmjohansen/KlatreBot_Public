@@ -12,7 +12,7 @@ backup/backup.sh /path/to/repo gdrive
 
 What it does
 - Stops `klatrebot.service` (if present)
-- Zips `klatrebot.db` and `chroma_db/chroma.sqlite3` into `/tmp` with timestamp
+- Zips `klatrebot.db` and the entire `chroma_db/` directory into `/tmp` with timestamp
 - Uses `rclone copy` to upload to `gdrive:KlatreBot_Backups/<TIMESTAMP>/`
 - Restarts `klatrebot.service` (if present)
 

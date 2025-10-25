@@ -23,7 +23,7 @@ eval ${SHUTDOWN_CMD} || true
 
 echo "Creating archive ${ZIPPATH}"
 cd "${REPO_DIR}"
-zip -r -q "${ZIPPATH}" klatrebot.db chroma_db/chroma.sqlite3 || true
+zip -r -q "${ZIPPATH}" klatrebot.db chroma_db/
 
 echo "Uploading ${ZIPPATH} to ${RCLONE_REMOTE}:KlatreBot_Backups/${TIMESTAMP}/"
 rclone copy "${ZIPPATH}" "${RCLONE_REMOTE}:KlatreBot_Backups/${TIMESTAMP}/" -P
