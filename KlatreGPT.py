@@ -131,28 +131,6 @@ If you have relevant context about the user, use it to make your response more p
         else:
             return True
 
-    async def _heartbeat_logger(self, operation_name: str, interval: float = 5.0):
-        """Background task that logs periodic heartbeat messages while waiting for API calls"""
-        elapsed = 0.0
-        while True:
-            await asyncio.sleep(interval)
-            elapsed += interval
-            self.logger.info(f"Still waiting for {operation_name}... ({elapsed:.0f}s elapsed)")
-            print(f"[HEARTBEAT] Waiting for {operation_name}... ({elapsed:.0f}s)", file=sys.stderr)
-
-    async def _call_openai_with_heartbeat(self, operation_name: str, api_call_coro):
-        """Wrap an OpenAI API call with periodic heartbeat logging"""
-        heartbeat_task = asyncio.create_task(self._heartbeat_logger(operation_name))
-        try:
-            result = await api_call_coro
-            return result
-        finally:
-            heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass
-
     async def prompt_gpt(self, prompt_context, prompt_question, user_id=None, use_rag=True):
         """Orchestrated prompt flow:
         1) Optionally retrieve enhanced context via RAG
@@ -208,19 +186,16 @@ If you have relevant context about the user, use it to make your response more p
         # Call planner
         planner_response_text = None
         planner_json = None
+        final_instructions = ""  # Initialize here to ensure it's always defined
         try:
-            # Primary planner call with heartbeat monitoring
-            self.logger.info("Calling planner LLM...")
-            planner_resp = await self._call_openai_with_heartbeat(
-                "Planner LLM",
-                self.client.chat.completions.create(
-                    model="gpt-5-mini",
-                    reasoning_effort="low",
-                    messages=[
-                        {"role": "system", "content": planner_prompt_system},
-                        {"role": "user", "content": planner_user_content}
-                    ]
-                )
+            # Primary planner call
+            planner_resp = await self.client.chat.completions.create(
+                model="gpt-5-mini",
+                reasoning_effort="low",
+                messages=[
+                    {"role": "system", "content": planner_prompt_system},
+                    {"role": "user", "content": planner_user_content}
+                ]
             )
             planner_response_text = planner_resp.choices[0].message.content
             self.logger.debug(f"Planner response: {planner_response_text}")
@@ -288,10 +263,8 @@ If you have relevant context about the user, use it to make your response more p
                         tool_results[tool_name or f"unknown_{idx}"] = {"success": False, "error": "unknown tool"}
                         continue
                     # Execute tool
-                    self.logger.info(f"Executing tool: {tool_name} with args: {args}")
                     res = await self.tool_manager.call_tool(tool_name, args)
                     tool_results[tool_name] = res
-                    self.logger.info(f"Tool {tool_name} completed with success={res.get('success', False)}")
             except Exception as e:
                 self.logger.exception(f"Tool execution failed: {e}")
                 planner_failed = True
@@ -307,17 +280,13 @@ If you have relevant context about the user, use it to make your response more p
                 if 'pytest' in sys.modules:
                     print("FALLBACK PROMPT:\n" + full_prompt)  # Debug output only in tests
                 llm_start = time.time()
-                self.logger.info("Calling legacy fallback LLM...")
-                response = await self._call_openai_with_heartbeat(
-                    "Legacy Fallback LLM",
-                    self.client.chat.completions.create(
-                        model="gpt-5-mini",
-                        reasoning_effort="low",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": full_prompt}
-                        ]
-                    )
+                response = await self.client.chat.completions.create(
+                    model="gpt-5-mini",
+                    reasoning_effort="low",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": full_prompt}
+                    ]
                 )
                 llm_time = time.time() - llm_start
                 total_time = time.time() - start_time
@@ -346,31 +315,13 @@ If you have relevant context about the user, use it to make your response more p
                 return f"Det kan jeg desværre ikke svare på. ({e})"
 
         # Build final prompt including tool outputs
-        self.logger.info("Building final prompt with tool results...")
         try:
             tool_outputs_block = json.dumps(tool_results, default=str, indent=2)
         except Exception as e:
-            self.logger.error(f"Failed to serialize tool results to JSON: {e}")
+            self.logger.error(f"Failed to serialize tool results: {e}")
             tool_outputs_block = str(tool_results)
         
-        # Emit RAG tool outputs for debugging (non-blocking)
-        try:
-            if hasattr(sys, '__stdout__') and sys.__stdout__:
-                sys.__stdout__.write("[RAG TOOL OUTPUTS]\n")
-                sys.__stdout__.write(tool_outputs_block + "\n")
-                sys.__stdout__.flush()
-        except Exception as debug_err:
-            # Fallback to regular print if direct write fails
-            try:
-                print("[RAG TOOL OUTPUTS]")
-                print(tool_outputs_block)
-            except Exception:
-                # If even print fails, just log it
-                self.logger.debug(f"Could not print tool outputs (not critical): {debug_err}")
-        
-        self.logger.info("Tool outputs serialized, building final prompt...")
         final_instructions_block = final_instructions or ""
-        # Instruct the final composer to integrate retrieved information naturally (do not expose tool provenance).
         final_prompt = (
             f"CONTEXT:\n{enhanced_context}\n\n"
             f"RETRIEVED_INFO:\n{tool_outputs_block}\n\n"
@@ -381,25 +332,17 @@ If you have relevant context about the user, use it to make your response more p
             "IMPORTANT: When mentioning users, copy user IDs exactly as they appear - never shorten or modify them. "
             "Keep the bot voice as specified by the system prompt."
         )
-        if 'pytest' in sys.modules:
-            print("FINAL PROMPT:\n" + final_prompt)  # Debug output only in tests
-        
-        self.logger.info("Final prompt constructed, ready to call final LLM...")
 
         # Call final LLM to compose the answer
         try:
-            self.logger.info("Calling final LLM to compose answer...")
             llm_start = time.time()
-            response = await self._call_openai_with_heartbeat(
-                "Final LLM Compose",
-                self.client.chat.completions.create(
-                    model="gpt-5-mini",
-                    reasoning_effort="low",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": final_prompt}
-                    ]
-                )
+            response = await self.client.chat.completions.create(
+                model="gpt-5-mini",
+                reasoning_effort="low",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": final_prompt}
+                ]
             )
             llm_time = time.time() - llm_start
             total_time = time.time() - start_time
