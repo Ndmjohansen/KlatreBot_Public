@@ -478,9 +478,12 @@ class MessageDatabase:
                         
                         row = await cursor.fetchone()
                         if row:
-                            content, display_name, timestamp, message_type, discord_user_id = row
+                            content, display_name, timestamp_str, message_type, discord_user_id = row
                             
-                            # Store in ChromaDB (timestamp is already datetime object from database)
+                            # Convert timestamp string from SQLite to datetime object
+                            timestamp = datetime.datetime.fromisoformat(timestamp_str) if isinstance(timestamp_str, str) else timestamp_str
+                            
+                            # Store in ChromaDB
                             await self.chroma_service.store_embedding(
                                 discord_message_id, embedding, content, display_name, timestamp, message_type, discord_user_id
                             )
