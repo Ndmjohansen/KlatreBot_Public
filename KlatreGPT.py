@@ -149,7 +149,7 @@ If you have relevant context about the user, use it to make your response more p
         else:
             return True
 
-    async def prompt_gpt(self, prompt_context, prompt_question, user_id=None, use_rag=True):
+    async def prompt_gpt(self, prompt_context, prompt_question, user_id=None):
         """Orchestrated prompt flow:
         1) Optionally retrieve enhanced context via RAG
         2) Ask planner LLM which tools to call
@@ -165,15 +165,9 @@ If you have relevant context about the user, use it to make your response more p
         self.logger.info(f"Starting orchestrated LLM request for user {user_id}: {prompt_question[:100]}...")
         
         # Step 0: prepare recent context only — let the planner decide RAG calls
-        try:
-            # Do NOT call RAG here. Provide only the recent chat context (if any)
-            # and let the planner LLM choose which RAG tools to invoke (and how liberally).
-            enhanced_context = prompt_context or ""
-            is_factual_query = False
-        except Exception as e:
-            self.logger.exception(f"Failed preparing context: {e}")
-            enhanced_context = prompt_context or ""
-            is_factual_query = False
+        # Do NOT call RAG here. Provide only the recent chat context (if any)
+        # and let the planner LLM choose which RAG tools to invoke (and how liberally).
+        enhanced_context = prompt_context or ""
 
         # Load system prompt
         system_prompt = self.load_system_prompt()
@@ -299,7 +293,8 @@ If you have relevant context about the user, use it to make your response more p
         if planner_failed:
             self.logger.info("Planner failed - falling back to legacy single-call LLM behavior")
             try:
-                full_prompt = f"CONTEXT:\n{enhanced_context}\n\nQUESTION: {prompt_question}"
+                user_metadata = f"Asking user Discord ID: {user_id}" if user_id else "No user ID available"
+                full_prompt = f"{user_metadata}\n\nCONTEXT:\n{enhanced_context}\n\nQUESTION: {prompt_question}"
                 if 'pytest' in sys.modules:
                     print("FALLBACK PROMPT:\n" + full_prompt)  # Debug output only in tests
                 llm_start = time.time()
