@@ -61,9 +61,15 @@ class KlatreGPT:
             try:
                 self.logger.info(f"web_search called with query={query!r} num_results={num_results}")
                 # Use the Responses API for native web search
+                # Use a non-reasoning web_search invocation to keep latency low when possible.
+                # Setting 'reasoning.effort' to 'low' and 'tool_choice' to 'web_search' encourages
+                # the model to delegate the search work to the web_search tool instead of running
+                # an agentic search flow that increases latency.
                 response: Response = await self.client.responses.create(
-                    model="gpt-5-mini",
+                    model="gpt-4o-mini",
+                    reasoning={"effort": "low"},
                     tools=[{"type": "web_search"}],
+                    tool_choice="web_search",
                     input=query,
                     include=["web_search_call.action.sources"]  # Include sources for full URLs
                 )
@@ -205,7 +211,7 @@ If you have relevant context about the user, use it to make your response more p
         try:
             # Primary planner call
             planner_resp = await self.client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4o-mini",
                 reasoning_effort="low",
                 messages=[
                     {"role": "system", "content": planner_prompt_system},
@@ -228,7 +234,7 @@ If you have relevant context about the user, use it to make your response more p
                         "Please output the corrected JSON (no additional text)."
                     )
                     repair_resp = await self.client.chat.completions.create(
-                        model="gpt-5-mini",
+                        model="gpt-4o-mini",
                         reasoning_effort="low",
                         messages=[
                             {"role": "system", "content": planner_prompt_system},
@@ -296,7 +302,7 @@ If you have relevant context about the user, use it to make your response more p
                     print("FALLBACK PROMPT:\n" + full_prompt)  # Debug output only in tests
                 llm_start = time.time()
                 response = await self.client.chat.completions.create(
-                    model="gpt-5-mini",
+                    model="gpt-4o-mini",
                     reasoning_effort="low",
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -352,7 +358,7 @@ If you have relevant context about the user, use it to make your response more p
         try:
             llm_start = time.time()
             response = await self.client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4o-mini",
                 reasoning_effort="low",
                 messages=[
                     {"role": "system", "content": system_prompt},
