@@ -67,7 +67,6 @@ class KlatreGPT:
                 # an agentic search flow that increases latency.
                 response: Response = await self.client.responses.create(
                     model="gpt-4o-mini",
-                    reasoning={"effort": "low"},
                     tools=[{"type": "web_search"}],
                     tool_choice="web_search",
                     input=query,
@@ -212,7 +211,6 @@ If you have relevant context about the user, use it to make your response more p
             # Primary planner call
             planner_resp = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
-                reasoning_effort="low",
                 messages=[
                     {"role": "system", "content": planner_prompt_system},
                     {"role": "user", "content": planner_user_content}
@@ -235,7 +233,6 @@ If you have relevant context about the user, use it to make your response more p
                     )
                     repair_resp = await self.client.chat.completions.create(
                         model="gpt-4o-mini",
-                        reasoning_effort="low",
                         messages=[
                             {"role": "system", "content": planner_prompt_system},
                             {"role": "user", "content": repair_prompt}
@@ -303,7 +300,6 @@ If you have relevant context about the user, use it to make your response more p
                 llm_start = time.time()
                 response = await self.client.chat.completions.create(
                     model="gpt-4o-mini",
-                    reasoning_effort="low",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": full_prompt}
@@ -359,7 +355,6 @@ If you have relevant context about the user, use it to make your response more p
             llm_start = time.time()
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
-                reasoning_effort="low",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": final_prompt}
