@@ -45,8 +45,8 @@ class ElaborateQueueSystem:
             try:
                 await asyncio.wait_for(self.do_work(task), 30)
             except asyncio.TimeoutError:
-                if task.retry_count > 10:
-                    task.return_text = f"Det kan jeg desværre ikke hjælpe med [redacted] har sagt det ikke er cool! Jeg har spurgt {task.retry_count} gange!"
+                if task.retry_count > 0:  # Allow only 1 retry (0 -> 1, then fail)
+                    task.return_text = f"Det kan jeg desværre ikke hjælpe med [redacted] har sagt det ikke er cool! Jeg har spurgt {task.retry_count + 1} gange!"
                 else:
                     is_retrying = True
                     task.retry_count += 1

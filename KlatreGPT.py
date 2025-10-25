@@ -75,9 +75,16 @@ class KlatreGPT:
                     "annotations": annotations  # For citations like url_citation with start_index, url, title
                 }
             except openai.APIError as e:
-                self.logger.error(f"OpenAI API error in web_search: {e}")
+                import sys
+                error_msg = f"ERROR: OpenAI API error in web_search: {e}"
+                self.logger.error(error_msg)
+                print(error_msg, file=sys.stderr)
                 return {"error": f"Web search API error: {str(e)}"}
             except Exception as e:
+                import sys
+                error_msg = f"ERROR: Web search failed: {e}"
+                self.logger.error(error_msg)
+                print(error_msg, file=sys.stderr)
                 return {"error": f"Web search failed: {str(e)}"}
 
         self.tool_manager.register_tool(
@@ -165,7 +172,7 @@ If you have relevant context about the user, use it to make your response more p
             "  \"final_instructions\": \"instructions for final answer (tone / constraints)\",\n"
             "  \"refine\": false\n"
             "}\n"
-            "Use RAG tools (rag_search, find_relevant_context, user_messages, conversation_summary, search_messages) liberally for chat history and user context. For queries needing up-to-date or external information (news, weather, current events, facts not in chat), use the native web_search tool, which provides results with citations and sources. Prefer at most 2 tool calls total (e.g., one RAG + one web_search). Only request more than 2 when necessary; if you request >2 include the field \"allow_extra_calls\": true and provide a short \"extra_call_justification\" explaining why additional calls are needed. Planner may request up to 4 calls. Each tool call may request many results (set 'limit' high for RAG, num_results for web)."
+            "Use RAG tools (rag_search, find_relevant_context, user_messages, conversation_summary, search_messages) for chat history and user context. For queries needing up-to-date or external information (news, weather, current events, facts not in chat), use the native web_search tool, which provides results with citations and sources. Prefer at most 2 tool calls total (e.g., one RAG + one web_search). Only request more than 2 when necessary; if you request >2 include the field \"allow_extra_calls\": true and provide a short \"extra_call_justification\" explaining why additional calls are needed. Planner may request up to 4 calls. IMPORTANT: All RAG tools have a hard limit of 10 results maximum - do not request more than 10."
         )
 
         # Call planner
@@ -212,6 +219,9 @@ If you have relevant context about the user, use it to make your response more p
                     planner_json = None
         except Exception as e:
             self.logger.exception(f"Planner LLM failed or returned invalid JSON: {e}")
+            # Print to stderr so OpenAI errors don't fail silently
+            import sys
+            print(f"ERROR: Planner LLM failed: {e}", file=sys.stderr)
             planner_json = None
 
         tool_results = {}
@@ -289,6 +299,9 @@ If you have relevant context about the user, use it to make your response more p
             except Exception as e:
                 total_time = time.time() - start_time
                 self.logger.error(f"Legacy LLM request failed after {total_time:.2f}s: {e}")
+                # Print to stderr so OpenAI errors don't fail silently
+                import sys
+                print(f"ERROR: Legacy LLM request failed: {e}", file=sys.stderr)
                 return f"Det kan jeg desværre ikke svare på. ({e})"
 
         # Build final prompt including tool outputs
@@ -348,6 +361,9 @@ If you have relevant context about the user, use it to make your response more p
         except Exception as e:
             total_time = time.time() - start_time
             self.logger.exception(f"Final LLM compose failed after {total_time:.2f}s: {e}")
+            # Print to stderr so OpenAI errors don't fail silently
+            import sys
+            print(f"ERROR: Final LLM compose failed: {e}", file=sys.stderr)
             return f"Det kan jeg desværre ikke svare på. ({e})"
 
     @staticmethod

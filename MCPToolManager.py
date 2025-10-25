@@ -73,7 +73,7 @@ class MCPToolManager:
                                   topic: str = None,
                                   user_id: Optional[int] = None,
                                   target_user_id: Optional[int] = None,
-                                  limit: int = 20,
+                                  limit: int = 10,
                                   days_back: Optional[int] = None):
             """Unified search tool supporting multiple common use cases.
 
@@ -82,9 +82,11 @@ class MCPToolManager:
             - If `target_user_id` is provided, perform a user-specific search (optionally filtered by `query` or `days_back`).
             - Otherwise, if `query` is provided, perform a general relevance-based context search.
             - Returns a consistent dict with `query` and `results`.
+            - Maximum limit enforced at 10 to prevent context overload.
             """
             # Safe type casting for int params (handles LLM str outputs like "20")
-            limit = int(limit) if limit is not None else 20
+            # Enforce maximum limit of 10 to prevent context overload
+            limit = min(int(limit) if limit is not None else 10, 10)
             user_id = int(user_id) if user_id is not None else None
             target_user_id = int(target_user_id) if target_user_id is not None else None
             days_back = int(days_back) if days_back is not None else None
@@ -108,18 +110,18 @@ class MCPToolManager:
             return {"query": query or topic or "", "results": []}
 
         # Backwards-compatible wrappers that call the unified search_messages tool
-        async def rag_search(topic: str, limit: int = 20):
-            """Alias for topic-based semantic search. Preserve legacy output field 'topic'."""
-            # Safe casting
-            limit = int(limit) if limit is not None else 20
+        async def rag_search(topic: str, limit: int = 10):
+            """Alias for topic-based semantic search. Preserve legacy output field 'topic'. Max 10 results."""
+            # Safe casting and enforce max limit
+            limit = min(int(limit) if limit is not None else 10, 10)
             res = await search_messages(topic=topic, limit=limit)
             # search_messages returns {"query": topic, "results": [...]}; keep legacy key "topic"
             return {"topic": res.get("query"), "results": res.get("results")}
 
         async def find_relevant_context(query: str, user_id: Optional[int] = None, limit: int = 10):
-            """Alias for a general relevance-based search."""
-            # Safe casting
-            limit = int(limit) if limit is not None else 10
+            """Alias for a general relevance-based search. Max 10 results."""
+            # Safe casting and enforce max limit
+            limit = min(int(limit) if limit is not None else 10, 10)
             user_id = int(user_id) if user_id is not None else None
             return await search_messages(query=query, user_id=user_id, limit=limit)
 

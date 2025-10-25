@@ -158,9 +158,12 @@ class RAGQueryService:
             self.logger.error(f"Error getting conversation summary: {e}")
             return "Error retrieving conversation summary."
     
-    async def search_by_topic(self, topic: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """Search for messages by topic using semantic similarity"""
+    async def search_by_topic(self, topic: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Search for messages by topic using semantic similarity (max 10 results)"""
         try:
+            # Enforce maximum limit of 10
+            limit = min(int(limit), 10)
+            
             query_embedding = await self.embedding_service.generate_embedding(topic)
             if not query_embedding:
                 return []
@@ -358,7 +361,7 @@ class RAGQueryService:
     
     async def find_user_specific_messages(self, query: str, target_user_id: int, 
                                         days_back: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Find messages by a specific user with optional time filtering"""
+        """Find messages by a specific user with optional time filtering (max 10 results)"""
         try:
             # Generate embedding for the query
             query_embedding = await self.embedding_service.generate_embedding(query)
@@ -370,10 +373,10 @@ class RAGQueryService:
             if days_back:
                 start_date = datetime.datetime.now() - datetime.timedelta(days=days_back)
             
-            # Find similar messages by the target user
+            # Find similar messages by the target user (limit to 10 max)
             similar_messages = await self.db.get_similar_messages(
                 query_embedding,
-                limit=20,
+                limit=10,
                 user_id=target_user_id,
                 start_date=start_date
             )
@@ -401,9 +404,16 @@ class RAGQueryService:
             
             if query_type == "everyone":
                 # Handle everyone queries - get messages from all users
+                # LIMIT: Only retrieve from first 5 users max, with 2 messages per user (total max 10)
                 is_factual_query = True
                 all_users = await self.db.get_user_stats()
-                for user in all_users:
+                message_count = 0
+                max_total_messages = 10
+                max_users = 5
+                
+                for i, user in enumerate(all_users[:max_users]):
+                    if message_count >= max_total_messages:
+                        break
                     if user['display_name']:
                         user_messages = await self.find_user_specific_messages(
                             query, 
@@ -413,18 +423,27 @@ class RAGQueryService:
                         if user_messages:
                             context_parts.append(f"RAG CONTEXT:")
                             context_parts.append(f"MESSAGES FROM {user['display_name'].upper()}:")
-                            for msg in user_messages[:3]:  # Limit per user
+                            messages_to_add = min(2, max_total_messages - message_count)  # Limit per user
+                            for msg in user_messages[:messages_to_add]:
                                 timestamp = msg['timestamp']
                                 if isinstance(timestamp, str):
                                     timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                                 context_parts.append(
                                     f"{timestamp.strftime('%Y-%m-%d %H:%M')}: {msg['content']}"
                                 )
+                                message_count += 1
             
             elif query_type in ["single_user", "multi_user", "comparison"] and target_users:
                 # Handle single or multiple user queries
+                # LIMIT: Max 3 users, with 3-4 messages per user (total max 10)
                 is_factual_query = True
-                for user_name in target_users:
+                message_count = 0
+                max_total_messages = 10
+                max_users = 3
+                
+                for user_name in target_users[:max_users]:
+                    if message_count >= max_total_messages:
+                        break
                     user_info = await self.db.get_user_by_display_name(user_name)
                     if user_info:
                         user_messages = await self.find_user_specific_messages(
@@ -435,13 +454,15 @@ class RAGQueryService:
                         if user_messages:
                             context_parts.append(f"RAG CONTEXT:")
                             context_parts.append(f"MESSAGES FROM {user_name.upper()}:")
-                            for msg in user_messages[:5]:  # Limit per user
+                            messages_to_add = min(len(user_messages), max_total_messages - message_count, 4)
+                            for msg in user_messages[:messages_to_add]:
                                 timestamp = msg['timestamp']
                                 if isinstance(timestamp, str):
                                     timestamp = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                                 context_parts.append(
                                     f"{timestamp.strftime('%Y-%m-%d %H:%M')}: {msg['content']}"
                                 )
+                                message_count += 1
                         else:
                             context_parts.append(f"No relevant messages found from {user_name}")
             

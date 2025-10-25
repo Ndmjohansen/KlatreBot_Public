@@ -31,7 +31,11 @@ class RAGEmbeddingService:
             )
             return response.data[0].embedding
         except Exception as e:
-            self.logger.error(f"Error generating embedding: {e}")
+            import sys
+            error_msg = f"ERROR: OpenAI embedding generation failed: {e}"
+            self.logger.error(error_msg)
+            # Print to stderr so it doesn't fail silently
+            print(error_msg, file=sys.stderr)
             return None
     
     async def generate_message_embeddings(self, limit: int = 100) -> int:
