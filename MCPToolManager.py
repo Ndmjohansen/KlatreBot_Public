@@ -46,6 +46,11 @@ class MCPToolManager:
         """Execute a registered tool and return a standardized result dict."""
         if name not in self.tools:
             return {"success": False, "error": f"Tool '{name}' not found."}
+        # Log invocation details to help trace missing tool calls in logs
+        try:
+            logger.info(f"Invoking tool '{name}' with args={args}")
+        except Exception:
+            pass
         func = self.tools[name]["func"]
         start = time.time()
         try:

@@ -37,10 +37,10 @@ class KlatreGPT:
 
     def set_openai_key(self, key):
         # Set aggressive timeouts to prevent hanging on slow API responses
-        # Total timeout of 25 seconds (within the 30s asyncio timeout)
+        # Increase timeout to 60 seconds to accommodate slower Responses API calls
         self.client = AsyncOpenAI(
             api_key=key,
-            timeout=25.0,  # Total request timeout in seconds
+            timeout=60.0,  # Total request timeout in seconds
             max_retries=0  # Disable automatic retries - we handle retries ourselves
         )
     
@@ -53,8 +53,13 @@ class KlatreGPT:
         self.tool_manager = MCPToolManager(self.rag_query_service)
 
         async def web_search(query: str, num_results: int = 5):
-            """Use OpenAI's native web search tool via Responses API to get up-to-date web results with citations."""
+            """Use OpenAI's native web search tool via Responses API to get up-to-date web results with citations.
+
+            Instrumented: logs the call and a lightweight summary of the response for debugging when the web_search tool
+            seems to cause planner/LLM failures without an obvious error in the main logs.
+            """
             try:
+                self.logger.info(f"web_search called with query={query!r} num_results={num_results}")
                 # Use the Responses API for native web search
                 response: Response = await self.client.responses.create(
                     model="gpt-5-mini",
@@ -62,18 +67,29 @@ class KlatreGPT:
                     input=query,
                     include=["web_search_call.action.sources"]  # Include sources for full URLs
                 )
-                
+
+                # Log a short response summary for debugging
+                try:
+                    summary = response.output_text if hasattr(response, 'output_text') else (response.choices[0].message.content[:200] if response.choices and response.choices[0].message and hasattr(response.choices[0].message, 'content') else '<no-content>')
+                    self.logger.debug(f"web_search response preview: {summary!r}")
+                except Exception:
+                    pass
+
                 # Extract the output text and annotations/citations
                 output_text = response.output_text if hasattr(response, 'output_text') else response.choices[0].message.content
                 sources = []
                 if hasattr(response, 'web_search_call') and response.web_search_call:
                     sources = response.web_search_call.action.get('sources', []) if hasattr(response.web_search_call.action, 'get') else []
-                
+
                 # Parse annotations for inline citations if available
                 annotations = []
                 if hasattr(response, 'message') and response.message and hasattr(response.message.content[0], 'annotations'):
                     annotations = response.message.content[0].annotations
-                
+
+                # Log sources at info level if none or empty to help detect missing results
+                if not sources:
+                    self.logger.info(f"web_search returned no sources for query={query!r}")
+
                 return {
                     "query": query,
                     "num_results": num_results,
