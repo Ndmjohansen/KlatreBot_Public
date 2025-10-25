@@ -207,14 +207,13 @@ If you have relevant context about the user, use it to make your response more p
         final_instructions = ""  # Initialize here to ensure it's always defined
         try:
             # Primary planner call
-            planner_resp = await self.client.chat.completions.create(
+            planner_input = planner_prompt_system + "\n\n" + planner_user_content
+            planner_resp = await self.client.responses.create(
                 model="gpt-5-mini",
-                messages=[
-                    {"role": "system", "content": planner_prompt_system},
-                    {"role": "user", "content": planner_user_content}
-                ]
+                reasoning={"effort": "minimal"},
+                input=planner_input
             )
-            planner_response_text = planner_resp.choices[0].message.content
+            planner_response_text = planner_resp.output_text if hasattr(planner_resp, 'output_text') else (planner_resp.choices[0].message.content if planner_resp.choices and planner_resp.choices[0].message and hasattr(planner_resp.choices[0].message, 'content') else '<no-content>')
             self.logger.debug(f"Planner response: {planner_response_text}")
             # Parse JSON from planner (be forgiving)
             try:
@@ -229,15 +228,13 @@ If you have relevant context about the user, use it to make your response more p
                         "It must return valid JSON only, matching the structure described earlier. "
                         "Please output the corrected JSON (no additional text)."
                     )
-                    repair_resp = await self.client.chat.completions.create(
+                    repair_input = planner_prompt_system + "\n\n" + repair_prompt
+                    repair_resp = await self.client.responses.create(
                         model="gpt-5-mini",
-                        reasoning={"effort": "low"},
-                        messages=[
-                            {"role": "system", "content": planner_prompt_system},
-                            {"role": "user", "content": repair_prompt}
-                        ]
+                        reasoning={"effort": "minimal"},
+                        input=repair_input
                     )
-                    repair_text = repair_resp.choices[0].message.content
+                    repair_text = repair_resp.output_text if hasattr(repair_resp, 'output_text') else (repair_resp.choices[0].message.content if repair_resp.choices and repair_resp.choices[0].message and hasattr(repair_resp.choices[0].message, 'content') else '<no-content>')
                     self.logger.debug(f"Planner repair response: {repair_text}")
                     planner_json = json.loads(repair_text)
                 except Exception as e:
@@ -297,17 +294,15 @@ If you have relevant context about the user, use it to make your response more p
                 if 'pytest' in sys.modules:
                     print("FALLBACK PROMPT:\n" + full_prompt)  # Debug output only in tests
                 llm_start = time.time()
-                response = await self.client.chat.completions.create(
+                legacy_input = system_prompt + "\n\n" + full_prompt
+                response = await self.client.responses.create(
                     model="gpt-5-mini",
-                    reasoning={"effort": "low"},
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": full_prompt}
-                    ]
+                    reasoning={"effort": "minimal"},
+                    input=legacy_input
                 )
                 llm_time = time.time() - llm_start
                 total_time = time.time() - start_time
-                return_value = response.choices[0].message.content
+                return_value = response.output_text if hasattr(response, 'output_text') else (response.choices[0].message.content if response.choices and response.choices[0].message and hasattr(response.choices[0].message, 'content') else '<no-content>')
                 
                 # Post-process: Fix truncated user IDs (safety net)
                 import re
@@ -353,17 +348,15 @@ If you have relevant context about the user, use it to make your response more p
         # Call final LLM to compose the answer
         try:
             llm_start = time.time()
-            response = await self.client.chat.completions.create(
+            final_input = system_prompt + "\n\n" + final_prompt
+            response = await self.client.responses.create(
                 model="gpt-5-mini",
-                reasoning={"effort": "low"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": final_prompt}
-                ]
+                reasoning={"effort": "minimal"},
+                input=final_input
             )
             llm_time = time.time() - llm_start
             total_time = time.time() - start_time
-            return_value = response.choices[0].message.content
+            return_value = response.output_text if hasattr(response, 'output_text') else (response.choices[0].message.content if response.choices and response.choices[0].message and hasattr(response.choices[0].message, 'content') else '<no-content>')
             
             # Post-process: Fix truncated user IDs (safety net)
             import re
