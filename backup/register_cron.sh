@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: register_cron.sh install|remove [user] [hour minute]
-# Example: register_cron.sh install pi 3 15   # installs cron at 03:15 daily for user pi
+# Usage: register_cron.sh install|remove [user] [hour minute] [rclone_remote]
+# Example: register_cron.sh install pi 3 15 GDrive   # installs cron at 03:15 daily for user pi with remote GDrive
 
 ACTION=${1:-install}
 USER=${2:-$(whoami)}
 HOUR=${3:-3}
 MIN=${4:-15}
+RCLONE_REMOTE=${5:-GDrive}
 
-CRON_CMD="/usr/bin/env bash $(pwd)/backup/backup.sh $(pwd) gdrive >/dev/null 2>&1"
+CRON_CMD="/usr/bin/env bash $(pwd)/backup/backup.sh $(pwd) ${RCLONE_REMOTE} >/dev/null 2>&1"
 CRON_SPEC="${MIN} ${HOUR} * * * ${CRON_CMD}"
 
 tmpfile=$(mktemp)
