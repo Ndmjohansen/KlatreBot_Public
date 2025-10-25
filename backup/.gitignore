@@ -1,0 +1,9 @@
+# Ignore any credentials or tokens
+credentials.json
+token.json
+
+# Temporary archives
+*.zip
+
+
+
