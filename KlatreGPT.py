@@ -68,9 +68,7 @@ class KlatreGPT:
                 response: Response = await self.client.responses.create(
                     model="gpt-4o-mini",
                     tools=[{"type": "web_search"}],
-                    tool_choice="web_search",
                     input=query,
-                    include=["web_search_call.action.sources"]  # Include sources for full URLs
                 )
 
                 # Log a short response summary for debugging
