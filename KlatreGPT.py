@@ -346,14 +346,29 @@ If you have relevant context about the user, use it to make your response more p
                 return f"Det kan jeg desværre ikke svare på. ({e})"
 
         # Build final prompt including tool outputs
-        tool_outputs_block = json.dumps(tool_results, default=str, indent=2)
-        # Emit RAG tool outputs to real stdout for test debugging (bypass pytest capture)
+        self.logger.info("Building final prompt with tool results...")
         try:
-            sys.__stdout__.write("[RAG TOOL OUTPUTS]\n")
-            sys.__stdout__.write(tool_outputs_block + "\n")
-        except Exception:
-            print("[RAG TOOL OUTPUTS]")
-            print(tool_outputs_block)
+            tool_outputs_block = json.dumps(tool_results, default=str, indent=2)
+        except Exception as e:
+            self.logger.error(f"Failed to serialize tool results to JSON: {e}")
+            tool_outputs_block = str(tool_results)
+        
+        # Emit RAG tool outputs for debugging (non-blocking)
+        try:
+            if hasattr(sys, '__stdout__') and sys.__stdout__:
+                sys.__stdout__.write("[RAG TOOL OUTPUTS]\n")
+                sys.__stdout__.write(tool_outputs_block + "\n")
+                sys.__stdout__.flush()
+        except Exception as debug_err:
+            # Fallback to regular print if direct write fails
+            try:
+                print("[RAG TOOL OUTPUTS]")
+                print(tool_outputs_block)
+            except Exception:
+                # If even print fails, just log it
+                self.logger.debug(f"Could not print tool outputs (not critical): {debug_err}")
+        
+        self.logger.info("Tool outputs serialized, building final prompt...")
         final_instructions_block = final_instructions or ""
         # Instruct the final composer to integrate retrieved information naturally (do not expose tool provenance).
         final_prompt = (
@@ -368,6 +383,8 @@ If you have relevant context about the user, use it to make your response more p
         )
         if 'pytest' in sys.modules:
             print("FINAL PROMPT:\n" + final_prompt)  # Debug output only in tests
+        
+        self.logger.info("Final prompt constructed, ready to call final LLM...")
 
         # Call final LLM to compose the answer
         try:
