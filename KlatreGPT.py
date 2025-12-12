@@ -60,15 +60,18 @@ class KlatreGPT:
             """
             try:
                 self.logger.info(f"web_search called with query={query!r} num_results={num_results}")
-                # Use the Responses API for native web search
-                # Use a non-reasoning web_search invocation to keep latency low when possible.
-                # Setting 'reasoning.effort' to 'low' and 'tool_choice' to 'web_search' encourages
-                # the model to delegate the search work to the web_search tool instead of running
-                # an agentic search flow that increases latency.
+                # Use the Responses API for native web search with GPT-5.2
                 response: Response = await self.client.responses.create(
-                    model="gpt-4o-mini",
+                    model="gpt-5.2",
                     tools=[{"type": "web_search"}],
                     input=query,
+                    reasoning={
+                        "effort": "none"  # Low latency for web search
+                    },
+                    text={
+                        "verbosity": "medium"  # Medium verbosity for web search to get good summaries
+                    },
+                    include=["web_search_call.action.sources"]  # Include sources for full URLs
                 )
 
                 # Log a short response summary for debugging
@@ -209,12 +212,17 @@ If you have relevant context about the user, use it to make your response more p
         planner_json = None
         final_instructions = ""  # Initialize here to ensure it's always defined
         try:
-            # Primary planner call
+            # Primary planner call using Responses API with GPT-5.2
             planner_input = planner_prompt_system + "\n\n" + planner_user_content
             planner_resp = await self.client.responses.create(
-                model="gpt-5-mini",
-                reasoning={"effort": "minimal"},
-                input=planner_input
+                model="gpt-5.2",
+                input=planner_input,
+                reasoning={
+                    "effort": "none"  # Low latency for chat bot
+                },
+                text={
+                    "verbosity": "low"  # Concise JSON output
+                }
             )
             planner_response_text = planner_resp.output_text if hasattr(planner_resp, 'output_text') else (planner_resp.choices[0].message.content if planner_resp.choices and planner_resp.choices[0].message and hasattr(planner_resp.choices[0].message, 'content') else '<no-content>')
             self.logger.debug(f"Planner response: {planner_response_text}")
@@ -233,9 +241,15 @@ If you have relevant context about the user, use it to make your response more p
                     )
                     repair_input = planner_prompt_system + "\n\n" + repair_prompt
                     repair_resp = await self.client.responses.create(
-                        model="gpt-5-mini",
-                        reasoning={"effort": "minimal"},
-                        input=repair_input
+                        model="gpt-5.2",
+                        input=repair_input,
+                        reasoning={
+                            "effort": "none"
+                        },
+                        text={
+                            "verbosity": "low"
+                        },
+                        previous_response_id=planner_resp.id if hasattr(planner_resp, 'id') else None  # Pass previous reasoning for efficiency
                     )
                     repair_text = repair_resp.output_text if hasattr(repair_resp, 'output_text') else (repair_resp.choices[0].message.content if repair_resp.choices and repair_resp.choices[0].message and hasattr(repair_resp.choices[0].message, 'content') else '<no-content>')
                     self.logger.debug(f"Planner repair response: {repair_text}")
@@ -300,9 +314,14 @@ If you have relevant context about the user, use it to make your response more p
                 llm_start = time.time()
                 legacy_input = system_prompt + "\n\n" + full_prompt
                 response = await self.client.responses.create(
-                    model="gpt-5-mini",
-                    reasoning={"effort": "minimal"},
-                    input=legacy_input
+                    model="gpt-5.2-chat-latest",  # Chat-optimized for conversational responses
+                    input=legacy_input,
+                    reasoning={
+                        "effort": "none"  # Low latency for chat bot
+                    },
+                    text={
+                        "verbosity": "low"  # Concise answers (max 125 words)
+                    }
                 )
                 llm_time = time.time() - llm_start
                 total_time = time.time() - start_time
@@ -354,9 +373,14 @@ If you have relevant context about the user, use it to make your response more p
             llm_start = time.time()
             final_input = system_prompt + "\n\n" + final_prompt
             response = await self.client.responses.create(
-                model="gpt-5-mini",
-                reasoning={"effort": "minimal"},
-                input=final_input
+                model="gpt-5.2-chat-latest",  # Chat-optimized for conversational responses
+                input=final_input,
+                reasoning={
+                    "effort": "none"  # Low latency for chat bot
+                },
+                text={
+                    "verbosity": "low"  # Concise answers (max 125 words)
+                }
             )
             llm_time = time.time() - llm_start
             total_time = time.time() - start_time
