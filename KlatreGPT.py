@@ -320,7 +320,7 @@ If you have relevant context about the user, use it to make your response more p
                         "effort": "medium"  # gpt-5.2-chat-latest only supports 'medium'
                     },
                     text={
-                        "verbosity": "low"  # Concise answers (max 125 words)
+                        "verbosity": "medium"  # gpt-5.2-chat-latest only supports 'medium'
                     }
                 )
                 llm_time = time.time() - llm_start
@@ -379,7 +379,7 @@ If you have relevant context about the user, use it to make your response more p
                     "effort": "medium"  # gpt-5.2-chat-latest only supports 'medium'
                 },
                 text={
-                    "verbosity": "low"  # Concise answers (max 125 words)
+                    "verbosity": "medium"  # gpt-5.2-chat-latest only supports 'medium'
                 }
             )
             llm_time = time.time() - llm_start
