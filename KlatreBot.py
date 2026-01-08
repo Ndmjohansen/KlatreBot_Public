@@ -106,15 +106,24 @@ def get_dates_of_week(year, week_number):
 def number_of_weeks(year):
     # Get the last day of the year
     last_day = datetime.date(year, 12, 31)
-
+    
     # Get the ISO calendar year and week number for the last day
-    iso_year, iso_week, _ = last_day.isocalendar()
-
-    # If the last week has 7 days, it's a complete week, otherwise, it's an incomplete week
-    if last_day.weekday() == 6:
+    iso_year, iso_week, weekday = last_day.isocalendar()
+    
+    # If Dec 31 belongs to the current ISO year, return its week number
+    if iso_year == year:
         return iso_week
     else:
-        return iso_week - 1
+        # Dec 31 belongs to week 1 of next ISO year
+        # Find the last day that belongs to the current ISO year by going backwards
+        # Check each day from Dec 31 backwards until we find one in the current year
+        for days_back in range(1, 8):
+            check_date = last_day - datetime.timedelta(days=days_back)
+            check_iso_year, check_iso_week, _ = check_date.isocalendar()
+            if check_iso_year == year:
+                return check_iso_week
+        # Fallback (should never happen)
+        return 52
 
 
 async def send_and_track_klatretid_message(channel):
@@ -826,16 +835,19 @@ async def on_message(message):  # used for searching for substrings
         send_string_list = []
         for match in matches:
             ugenr = re.findall(r'\d+', match)
-            if weeks_in_year >= int(ugenr[0]) >= week_num:
+            requested_week = int(ugenr[0])
+            # If requested week is >= current week and <= weeks in year, it's in current year
+            if week_num <= requested_week <= weeks_in_year:
                 dates = get_dates_of_week(
-                    datetime.datetime.now().year, int(ugenr[0]))
+                    datetime.datetime.now().year, requested_week)
                 send_string_list.append(
-                    f"Uge {ugenr[0]}, {dates[0]} til {dates[-1]}")
-            if weeks_in_year >= int(ugenr[0]) <= week_num:
+                    f"Uge {requested_week}, {dates[0]} til {dates[-1]}")
+            # Otherwise, it's in next year (either > weeks_in_year or < current week)
+            else:
                 dates = get_dates_of_week(
-                    datetime.datetime.now().year + 1, int(ugenr[0]))
+                    datetime.datetime.now().year + 1, requested_week)
                 send_string_list.append(
-                    f"Uge {ugenr[0]}, {dates[0]} til {dates[-1]}")
+                    f"Uge {requested_week}, {dates[0]} til {dates[-1]}")
         if len(send_string_list) > 0:
             final_string = " - ".join(send_string_list)
             await message.channel.send(final_string)
