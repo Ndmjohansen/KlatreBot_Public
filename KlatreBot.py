@@ -819,7 +819,7 @@ async def on_message(message):  # used for searching for substrings
     if message.author.bot:
         return
     # Ugenr
-    matches = re.findall(r'uge\s\d{1,2}', message.content.lower())
+    matches = re.findall(r'\buge\s?\d{1,2}\b', message.content.lower())
     if len(matches) >= 1 and not message.author.id == 1049311574638202950:
         weeks_in_year = number_of_weeks(datetime.datetime.now().year)
         week_num = datetime.datetime.today().isocalendar()[1]
