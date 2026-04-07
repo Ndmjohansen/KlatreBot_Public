@@ -1,4 +1,12 @@
 __pycache__/*
 .vscode/*
 .venv/*
+.env
 daily_message_log.json
+*.db*
+debug/
+chroma_db/*
+migrate_prod_to_local.ps1
+MIGRATION_GUIDE.md
+tests/__pycache__/*
+backup/data_cleanup/*
