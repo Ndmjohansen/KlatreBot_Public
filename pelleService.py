@@ -31,7 +31,7 @@ def getSecondsAsDateTimeString(totalSeconds):
 
 
 def whereTheFuckIsPelle(arg=None, debug_ts=""):
-    PELLE_CTX = "namibia-2025"
+    PELLE_CTX = "seoul-2026"
 
     if (arg is not None and arg.lower() == 'pic'):
         try:
