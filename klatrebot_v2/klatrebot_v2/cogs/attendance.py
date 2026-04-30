@@ -110,7 +110,10 @@ class AttendanceCog(commands.Cog):
         if not yes and not no:
             embed = build_klatretid_embed()
         else:
-            yes_names = ", ".join(u.display_name for u in yes)
+            yes_names = ", ".join(
+                (f"{u.display_name} 🐔" if u.discord_user_id in bailer_ids else u.display_name)
+                for u in yes
+            )
             no_names = ", ".join(
                 (f"{u.display_name} 🐔" if u.discord_user_id in bailer_ids else u.display_name)
                 for u in no
@@ -137,7 +140,9 @@ class AttendanceCog(commands.Cog):
         yes, no = await att_db.tally(self.bot.db_conn, session_id=sess.id)
         bailers = await att_db.bailers(self.bot.db_conn, session_id=sess.id)
         bailer_ids = {u.discord_user_id for u in bailers}
-        yes_names = ", ".join(u.display_name for u in yes) or "ingen"
+        yes_names = ", ".join(
+            (f"{u.display_name} 🐔" if u.discord_user_id in bailer_ids else u.display_name) for u in yes
+        ) or "ingen"
         no_names = ", ".join(
             (f"{u.display_name} 🐔" if u.discord_user_id in bailer_ids else u.display_name) for u in no
         ) or "ingen"
