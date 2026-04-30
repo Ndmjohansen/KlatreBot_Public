@@ -1,162 +1,98 @@
-# KlatreBot Service Setup
+# KlatreBot — Service Setup (Raspberry Pi)
 
-This guide explains how to set up KlatreBot as a systemd service on your Raspberry Pi.
+One-time installation. Run on the Pi as a sudo-capable user (e.g. `Admin`).
 
 ## Prerequisites
 
-- Raspberry Pi running Debian/Ubuntu
-- KlatreBot cloned to `/home/pi/KlatreBot/KlatreBot_Public/`
-- Python virtual environment created and dependencies installed
-- Discord bot token and OpenAI API key
+- Repo cloned to `/home/Admin/KlatreBot/KlatreBot_Public`
+- Poetry installed for the target user (`command -v poetry` succeeds)
+- Python ≥3.11
 
-## Installation Steps
-
-### 1. Transfer Files to Raspberry Pi
-
-Copy the following files to your Raspberry Pi:
-- `klatrebot.service`
-- `klatrebot.env`
-- `install-service.sh`
-
-### 2. Run Installation Script
-
-On your Raspberry Pi, run the installation script:
+## 1. Install dependencies
 
 ```bash
-sudo ./install-service.sh
+cd /home/Admin/KlatreBot/KlatreBot_Public
+poetry install --sync --no-interaction
 ```
 
-This will:
-- Copy the service file to `/etc/systemd/system/klatrebot.service`
-- Create environment directory `/etc/klatrebot/`
-- Copy environment template to `/etc/klatrebot/klatrebot.env`
-- Enable the service (but not start it yet)
-
-### 3. Configure Environment Variables
-
-Edit the environment file with your actual credentials:
+## 2. Create env file
 
 ```bash
-sudo nano /etc/klatrebot/klatrebot.env
+sudo install -d -m 755 /etc/klatrebot
+sudo install -m 600 -o root -g root /dev/stdin /etc/klatrebot/klatrebot.env <<'EOF'
+DISCORD_KEY=<discord bot token>
+OPENAI_KEY=<openai api key>
+DISCORD_MAIN_CHANNEL_ID=<channel id>
+DISCORD_SANDBOX_CHANNEL_ID=<channel id>
+ADMIN_USER_ID=<your discord user id>
+EOF
 ```
 
-Update the following values:
-```bash
-DISCORDKEY=your_actual_discord_bot_token
-OPENAIKEY=your_actual_openai_api_key
+Optional overrides (defaults shown — only add lines you want to change):
+
+```
+MODEL=gpt-5.4
+SOUL_PATH=./SOUL.MD
+DB_PATH=./klatrebot_v2.db
+TIMEZONE=Europe/Copenhagen
+KLATRETID_DAYS=[0,3]
+KLATRETID_POST_HOUR=17
+KLATRETID_START_HOUR=20
+GPT_RECENT_MESSAGE_COUNT=25
+RATE_LIMIT_PER_USER_PER_HOUR=30
+LOG_LEVEL=INFO
 ```
 
-### 4. Start the Service
+## 3. Patch + install systemd unit
+
+`klatrebot.service` contains a `@POETRY_DIR@` sentinel that needs replacing with the directory of the Poetry binary on PATH (so systemd can find `poetry`).
 
 ```bash
+cd /home/Admin/KlatreBot/KlatreBot_Public
+
+POETRY_BIN="$(command -v poetry)"
+POETRY_DIR="$(dirname "$POETRY_BIN")"
+
+# Patch the sentinel and install
+sed "s|@POETRY_DIR@|${POETRY_DIR}|g" klatrebot.service \
+  | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable klatrebot
 sudo systemctl start klatrebot
 ```
 
-### 5. Verify Service Status
+## 4. Verify
 
 ```bash
 sudo systemctl status klatrebot
-```
-
-## Service Management Commands
-
-| Command | Description |
-|---------|-------------|
-| `sudo systemctl start klatrebot` | Start the service |
-| `sudo systemctl stop klatrebot` | Stop the service |
-| `sudo systemctl restart klatrebot` | Restart the service |
-| `sudo systemctl status klatrebot` | Check service status |
-| `sudo systemctl enable klatrebot` | Enable auto-start on boot |
-| `sudo systemctl disable klatrebot` | Disable auto-start on boot |
-
-## Logging
-
-View service logs:
-```bash
-# View recent logs
-sudo journalctl -u klatrebot
-
-# Follow logs in real-time
 sudo journalctl -u klatrebot -f
-
-# View logs from today
-sudo journalctl -u klatrebot --since today
 ```
 
-## GitHub Actions Integration
+Look for `Bot startup completed` log line. If startup fails, check journal for tracebacks (env file misconfigured, Poetry not found, etc.).
 
-The GitHub Actions workflow has been updated to use systemd instead of `nohup`. When you push to the main branch, it will:
+## Updating after `git pull`
 
-1. Pull the latest code
-2. Update dependencies
-3. Update the environment file with secrets
-4. Restart the service
-
-## Troubleshooting
-
-### Service Won't Start
-
-1. Check service status:
-   ```bash
-   sudo systemctl status klatrebot
-   ```
-
-2. Check logs for errors:
-   ```bash
-   sudo journalctl -u klatrebot -n 50
-   ```
-
-3. Verify environment file:
-   ```bash
-   sudo cat /etc/klatrebot/klatrebot.env
-   ```
-
-4. Test manual execution:
-   ```bash
-   cd /home/pi/KlatreBot/KlatreBot_Public
-   source .venv/bin/activate
-   python KlatreBot.py
-   ```
-
-### Permission Issues
-
-Ensure the service runs as the correct user:
+If only Python source changed:
 ```bash
-sudo chown -R pi:pi /home/pi/KlatreBot/KlatreBot_Public
+sudo systemctl restart klatrebot
 ```
 
-### Virtual Environment Issues
-
-Recreate the virtual environment if needed:
+If `pyproject.toml` / `poetry.lock` changed:
 ```bash
-cd /home/pi/KlatreBot/KlatreBot_Public
-rm -rf .venv
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+cd /home/Admin/KlatreBot/KlatreBot_Public
+poetry install --sync --no-interaction
+sudo systemctl restart klatrebot
 ```
 
-## Security Notes
+If `klatrebot.service` changed: re-run step 3.
 
-- The environment file `/etc/klatrebot/klatrebot.env` contains sensitive credentials
-- It's set to mode 600 (owner read/write only)
-- The service runs with limited privileges and restricted filesystem access
-- Consider using systemd secrets for production deployments
+## Service management
 
-## Migration from nohup
-
-If you were previously running KlatreBot with `nohup`, you can migrate by:
-
-1. Stopping the old process:
-   ```bash
-   pkill python3
-   ```
-
-2. Installing the service as described above
-
-3. Starting the service:
-   ```bash
-   sudo systemctl start klatrebot
-   ```
-
-The service will automatically restart on failure and on system reboot.
+| Command | Effect |
+|---|---|
+| `sudo systemctl start klatrebot` | Start |
+| `sudo systemctl stop klatrebot` | Stop |
+| `sudo systemctl restart klatrebot` | Restart |
+| `sudo systemctl status klatrebot` | Show status |
+| `sudo journalctl -u klatrebot -f` | Tail logs |
