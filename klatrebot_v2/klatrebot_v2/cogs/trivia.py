@@ -2,9 +2,11 @@
 import asyncio
 from datetime import datetime, timezone
 
+import pytz
 from discord.ext import commands
 
 from klatrebot_v2.pelle import where_the_fuck_is_pelle
+from klatrebot_v2.settings import get_settings
 
 
 class TriviaCog(commands.Cog):
@@ -13,7 +15,9 @@ class TriviaCog(commands.Cog):
 
     @commands.command(name="ugenr")
     async def ugenr(self, ctx: commands.Context) -> None:
-        await ctx.reply(f"Vi er i uge {datetime.now().isocalendar()[1]}")
+        s = get_settings()
+        tz = pytz.timezone(s.timezone)
+        await ctx.send(f"Vi er i uge {datetime.now(tz).isocalendar()[1]}")
 
     @commands.command(name="uptime")
     async def uptime(self, ctx: commands.Context) -> None:
@@ -30,7 +34,17 @@ class TriviaCog(commands.Cog):
 
     @commands.command(name="glar")
     async def glar(self, ctx: commands.Context) -> None:
-        await ctx.reply("https://imgur.com/CnRFnel")
+        s = get_settings()
+        tz = pytz.timezone(s.timezone)
+        now_local = datetime.now(tz)
+        if now_local.hour < 10:
+            await ctx.send(f"Det er vist over din sengetid {ctx.author.name}")
+            return
+        if now_local.weekday() in s.klatretid_days and now_local.hour < s.klatretid_post_hour:
+            await ctx.send("Ro på kaptajn, folket er på arbejde")
+            return
+        await ctx.send("@everyone Hva sker der? er i.. er i glar?")
+        await ctx.send("https://imgur.com/CnRFnel")
 
 
 async def setup(bot: commands.Bot) -> None:
