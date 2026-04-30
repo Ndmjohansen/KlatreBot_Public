@@ -16,7 +16,36 @@ def test_first_match_wins_and_patterns_compile():
     assert first_match("helt almindelig sætning") is None
 
 
-def test_no_ugenr_match_in_responses():
-    """ugenr_match removed: silent no-op handler would block downstream matches."""
+def test_uge_pattern_requires_word_boundary():
     from klatrebot_v2.cogs.auto_responses import RESPONSES
-    assert all(ar.name != "ugenr_match" for ar in RESPONSES)
+    pat = next(ar.pattern for ar in RESPONSES if ar.name == "ugenr_match")
+    assert pat.search("hvad sker der i uge 35?")
+    assert pat.search("uge 35")
+    assert pat.search("uge35")  # \s? makes space optional
+    assert pat.search("luge 35") is None  # word boundary blocks "luge"
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_handle_uge_returns_date_range():
+    from unittest.mock import MagicMock
+    from klatrebot_v2.cogs.auto_responses import _handle_uge
+
+    msg = MagicMock()
+    msg.content = "uge 35"
+    out = await _handle_uge(msg)
+    assert out is not None
+    assert "Uge 35" in out and " til " in out
+
+
+@pytest.mark.asyncio
+async def test_handle_uge_skips_invalid_week():
+    from unittest.mock import MagicMock
+    from klatrebot_v2.cogs.auto_responses import _handle_uge
+
+    msg = MagicMock()
+    msg.content = "uge 99"
+    out = await _handle_uge(msg)
+    assert out is None

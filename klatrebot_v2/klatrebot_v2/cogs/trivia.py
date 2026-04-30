@@ -1,5 +1,6 @@
 """Lightweight trivia commands."""
 import asyncio
+import subprocess
 from datetime import datetime, timezone
 
 import discord
@@ -8,6 +9,15 @@ from discord.ext import commands
 
 from klatrebot_v2.pelle import seconds_as_dt_string, where_the_fuck_is_pelle
 from klatrebot_v2.settings import get_settings
+
+
+def _git_short_sha() -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+        ).decode("ascii").strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
 
 
 class TriviaCog(commands.Cog):
@@ -26,7 +36,9 @@ class TriviaCog(commands.Cog):
             await ctx.send("Lige startet.")
             return
         total_seconds = (datetime.now(timezone.utc) - self.bot.start_time).total_seconds()
-        await ctx.send(f"Jeg har kørt i {seconds_as_dt_string(total_seconds)}")
+        sha = _git_short_sha()
+        suffix = f" på version https://github.com/Ndmjohansen/KlatreBot_Public/commit/{sha}" if sha else ""
+        await ctx.send(f"Jeg har kørt i {seconds_as_dt_string(total_seconds)}{suffix}")
 
     @commands.command(name="pelle")
     async def pelle(self, ctx: commands.Context, *, arg: str | None = None) -> None:

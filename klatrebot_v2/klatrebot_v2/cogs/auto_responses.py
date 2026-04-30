@@ -5,7 +5,7 @@ import logging
 import random
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 import discord
@@ -43,7 +43,52 @@ async def _static(text: str) -> str:
     return text
 
 
+_UGE_RE = re.compile(r"\buge\s?(\d{1,2})\b", re.I)
+
+
+def _number_of_weeks(year: int) -> int:
+    return datetime(year, 12, 28).isocalendar()[1]
+
+
+def _dates_of_week(year: int, week: int) -> tuple[str, str]:
+    monday = datetime.strptime(f"{year}-{week}-1", "%G-%V-%u").date()
+    sunday = monday + timedelta(days=6)
+    return monday.isoformat(), sunday.isoformat()
+
+
+async def _handle_uge(msg: discord.Message) -> str | None:
+    matches = _UGE_RE.findall(msg.content)
+    if not matches:
+        return None
+    now = datetime.now()
+    year = now.year
+    weeks_in_year = _number_of_weeks(year)
+    current_week = now.isocalendar()[1]
+    parts: list[str] = []
+    for raw in matches:
+        try:
+            requested = int(raw)
+        except ValueError:
+            continue
+        if not 1 <= requested <= 53:
+            continue
+        target_year = year if current_week <= requested <= weeks_in_year else year + 1
+        try:
+            start, end = _dates_of_week(target_year, requested)
+        except ValueError:
+            continue
+        parts.append(f"Uge {requested}, {start} til {end}")
+    if not parts:
+        return None
+    return " - ".join(parts)
+
+
 RESPONSES: list[AutoResponse] = [
+    AutoResponse(
+        name="ugenr_match",
+        pattern=_UGE_RE,
+        handler=_handle_uge,
+    ),
     AutoResponse(
         name="downus",
         pattern=re.compile(r"!downus|fail", re.I),
@@ -115,17 +160,18 @@ class AutoResponsesCog(commands.Cog):
             is_bot=False,
         )
 
-        ar = first_match(message.content)
-        if ar is None:
-            return
-        logger.info("auto_response.fired name=%s", ar.name)
-        try:
-            reply = await ar.handler(message)
-        except Exception:
-            logger.exception("auto_response.handler_failed name=%s", ar.name)
-            return
-        if reply:
-            await message.channel.send(reply)
+        for ar in RESPONSES:
+            if not ar.pattern.search(message.content):
+                continue
+            try:
+                reply = await ar.handler(message)
+            except Exception:
+                logger.exception("auto_response.handler_failed name=%s", ar.name)
+                continue
+            if reply:
+                logger.info("auto_response.fired name=%s", ar.name)
+                await message.channel.send(reply)
+                break
 
 
 def _display_name(member) -> str:

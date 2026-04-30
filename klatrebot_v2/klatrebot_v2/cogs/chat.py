@@ -19,7 +19,7 @@ class ChatCog(commands.Cog):
     async def gpt(self, ctx: commands.Context, *, question: str) -> None:
         if not ratelimit.check_and_record(ctx.author.id):
             logger.info("ratelimit.blocked user_id=%d", ctx.author.id)
-            await ctx.reply("Slap af, du har spurgt for meget.")
+            await ctx.reply("Nu slapper du fandme lige lidt af med de spørgsmål")
             return
         start = time.monotonic()
         async with ctx.typing():

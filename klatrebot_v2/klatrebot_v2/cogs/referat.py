@@ -25,17 +25,22 @@ class RefereatCog(commands.Cog):
         now_utc = datetime.now(timezone.utc)
         window_start = since_5am_local(now=now_utc, tz=tz).astimezone(timezone.utc)
 
-        async with ctx.typing():
-            msgs = await msg_db.in_window(
-                self.bot.db_conn,
-                channel_id=ctx.channel.id,
-                start=window_start,
-                end=now_utc,
-            )
-            if not msgs:
-                await ctx.reply("Ingen beskeder siden 05:00.")
-                return
-            summary = await chat.summarize(msgs)
+        try:
+            async with ctx.typing():
+                msgs = await msg_db.in_window(
+                    self.bot.db_conn,
+                    channel_id=ctx.channel.id,
+                    start=window_start,
+                    end=now_utc,
+                )
+                if not msgs:
+                    await ctx.reply("Ingen beskeder at opsummere brormand.")
+                    return
+                summary = await chat.summarize(msgs)
+        except Exception:
+            logger.exception("referat.failed")
+            await ctx.reply("Der skete en fejl under oprettelse af referatet.")
+            return
         await ctx.reply(summary)
 
 

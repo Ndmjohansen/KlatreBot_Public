@@ -53,4 +53,5 @@ class KlatreBot(commands.Bot):
             await ctx.reply("Slap af.")
             return
         logger.exception("Command %s failed", ctx.command, exc_info=error)
-        await ctx.reply("Det kan jeg desværre ikke svare på.")
+        original = getattr(error, "original", error)
+        await ctx.reply(f"Det kan jeg desværre ikke svare på. ({original})")
