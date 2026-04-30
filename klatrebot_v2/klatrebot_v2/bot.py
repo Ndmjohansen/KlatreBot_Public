@@ -31,6 +31,7 @@ class KlatreBot(commands.Bot):
         llm_chat.set_db_conn_provider(lambda: self.db_conn)
         # Register cogs
         await self.load_extension("klatrebot_v2.cogs.chat")
+        await self.load_extension("klatrebot_v2.cogs.auto_responses")
         self.start_time = datetime.utcnow()
         logger.info("Bot startup completed")
 
