@@ -62,3 +62,32 @@ async def reply(*, question: str, asking_user_id: int, channel_id: int) -> ChatR
         include=["web_search_call.action.sources"],
     )
     return ChatReply(text=resp.output_text or "", sources=_extract_sources(resp))
+
+
+_SUMMARY_INSTRUCTIONS = """
+**Instructions for the AI (Output must be in Danish):**
+
+1.  **Mandatory Opening Line (in Danish):**
+    Always begin your response with the exact Danish phrase: "Her er hvad boomerene har yappet om i stedet for at arbejde i dag" or a very similar, contextually appropriate humorous Danish variation.
+
+2.  **Primary Task:** Summarize the day's chat. Humorous tone, jokes that reference the actual content.
+
+3.  **User Identification:** Each line shows `Name (id): content`. Refer to people by name in the summary; NEVER print numeric IDs in the output.
+
+4.  **Length:** No 60-word cap; can be longer to cover the day. Stay in Danish.
+"""
+
+
+async def summarize(msgs) -> str:
+    """Summarize a list of MessageWithAuthor. One Responses API call, no tools."""
+    soul = load_soul()
+    body = "\n".join(f"{m.user_display_name} ({m.user_id}): {m.content}" for m in msgs)
+    full_input = f"{soul}\n\n{_SUMMARY_INSTRUCTIONS}\n\nBESKEDER:\n{body}"
+    client = get_client()
+    resp = await client.responses.create(
+        model=get_settings().model,
+        input=full_input,
+        reasoning={"effort": "medium"},
+        text={"verbosity": "medium"},
+    )
+    return resp.output_text or ""
