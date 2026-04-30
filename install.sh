@@ -8,6 +8,8 @@ SERVICE_NAME="klatrebot"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 ENV_DIR="/etc/klatrebot"
 ENV_FILE="${ENV_DIR}/klatrebot.env"
+CRON_FILE="/etc/cron.d/klatrebot-backup"
+RCLONE_REMOTE="${RCLONE_REMOTE:-gdrive}"
 
 if [ "$EUID" -ne 0 ]; then
     echo "Run as root or with sudo" >&2
@@ -36,14 +38,14 @@ fi
 POETRY_DIR="$(dirname "$POETRY_BIN")"
 echo "Using poetry at: $POETRY_BIN"
 
-echo "[1/5] Installing dependencies"
+echo "[1/6] Installing dependencies"
 sudo -u "$TARGET_USER" bash -lc \
     "cd '$PROJECT_DIR' && '$POETRY_BIN' install --sync --no-interaction"
 
-echo "[2/5] Creating data dir $DATA_DIR"
+echo "[2/6] Creating data dir $DATA_DIR"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DATA_DIR"
 
-echo "[3/5] Ensuring env file $ENV_FILE"
+echo "[3/6] Ensuring env file $ENV_FILE"
 install -d -m 755 "$ENV_DIR"
 if [ ! -f "$ENV_FILE" ]; then
     install -m 600 -o root -g root /dev/stdin "$ENV_FILE" <<EOF
@@ -59,15 +61,27 @@ else
     echo "  $ENV_FILE already exists — leaving untouched"
 fi
 
-echo "[4/5] Installing systemd unit"
+echo "[4/6] Installing systemd unit"
 TMP_UNIT="$(mktemp)"
 trap 'rm -f "$TMP_UNIT"' EXIT
 sed "s|@POETRY_DIR@|${POETRY_DIR}|g" "$PROJECT_DIR/klatrebot.service" > "$TMP_UNIT"
 install -m 644 -o root -g root "$TMP_UNIT" "$SERVICE_FILE"
 
-echo "[5/5] Reloading + enabling systemd unit"
+echo "[5/6] Reloading + enabling systemd unit"
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
+
+echo "[6/6] Installing backup cron"
+if ! command -v rclone >/dev/null 2>&1; then
+    echo "  WARNING: rclone not installed — backups will fail until you install + configure it"
+    echo "           apt install rclone && sudo -u $TARGET_USER rclone config  (set up '${RCLONE_REMOTE}' remote)"
+fi
+install -m 644 -o root -g root /dev/stdin "$CRON_FILE" <<EOF
+# KlatreBot V2 daily DB backup — managed by install.sh
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 3 * * * $TARGET_USER ${PROJECT_DIR}/backup/backup.sh ${DATA_DIR}/klatrebot_v2.db ${RCLONE_REMOTE}
+EOF
 
 echo ""
 echo "Install complete."
@@ -76,3 +90,4 @@ echo "Next:"
 echo "  1. Edit secrets:    sudo -e $ENV_FILE"
 echo "  2. Start:           sudo systemctl start $SERVICE_NAME"
 echo "  3. Tail logs:       sudo journalctl -u $SERVICE_NAME -f"
+echo "  4. Test backup:     ${PROJECT_DIR}/backup/backup.sh"
