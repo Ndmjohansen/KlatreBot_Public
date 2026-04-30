@@ -68,7 +68,9 @@ class TriviaCog(commands.Cog):
             await ctx.send("Ro på kaptajn, folket er på arbejde")
             return
         await ctx.send("@everyone Hva sker der? er i.. er i glar?")
-        await ctx.send("https://imgur.com/CnRFnel")
+        embed = discord.Embed()
+        embed.set_image(url="https://imgur.com/CnRFnel.gif")
+        await ctx.send(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
