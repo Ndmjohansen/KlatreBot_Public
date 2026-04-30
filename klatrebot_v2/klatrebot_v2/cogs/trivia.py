@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytz
 from discord.ext import commands
 
-from klatrebot_v2.pelle import where_the_fuck_is_pelle
+from klatrebot_v2.pelle import seconds_as_dt_string, where_the_fuck_is_pelle
 from klatrebot_v2.settings import get_settings
 
 
@@ -22,10 +22,10 @@ class TriviaCog(commands.Cog):
     @commands.command(name="uptime")
     async def uptime(self, ctx: commands.Context) -> None:
         if self.bot.start_time is None:
-            await ctx.reply("Lige startet.")
+            await ctx.send("Lige startet.")
             return
-        delta = datetime.now(timezone.utc) - self.bot.start_time
-        await ctx.reply(f"Uppe i {delta}")
+        total_seconds = (datetime.now(timezone.utc) - self.bot.start_time).total_seconds()
+        await ctx.send(f"Jeg har kørt i {seconds_as_dt_string(total_seconds)}")
 
     @commands.command(name="pelle")
     async def pelle(self, ctx: commands.Context, *, arg: str | None = None) -> None:
