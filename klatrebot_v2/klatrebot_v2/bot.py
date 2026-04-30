@@ -1,6 +1,6 @@
 """discord.py Bot subclass. Owns DB connection + cog registration."""
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
@@ -37,7 +37,7 @@ class KlatreBot(commands.Bot):
         await self.load_extension("klatrebot_v2.cogs.trivia")
         from klatrebot_v2.tasks import klatretid_scheduler
         self.loop.create_task(klatretid_scheduler(self))
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
         logger.info("Bot startup completed")
 
     async def on_ready(self) -> None:

@@ -1,6 +1,6 @@
 """Lightweight trivia commands."""
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 from discord.ext import commands
 
@@ -20,7 +20,7 @@ class TriviaCog(commands.Cog):
         if self.bot.start_time is None:
             await ctx.reply("Lige startet.")
             return
-        delta = datetime.utcnow() - self.bot.start_time
+        delta = datetime.now(timezone.utc) - self.bot.start_time
         await ctx.reply(f"Uppe i {delta}")
 
     @commands.command(name="pelle")
