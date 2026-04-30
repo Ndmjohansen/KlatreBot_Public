@@ -2,6 +2,7 @@
 import asyncio
 from datetime import datetime, timezone
 
+import discord
 import pytz
 from discord.ext import commands
 
@@ -30,7 +31,18 @@ class TriviaCog(commands.Cog):
     @commands.command(name="pelle")
     async def pelle(self, ctx: commands.Context, *, arg: str | None = None) -> None:
         result = await asyncio.to_thread(where_the_fuck_is_pelle, arg=arg)
-        await ctx.reply(result)
+        if (
+            arg is not None
+            and arg.lower() == "pic"
+            and result.startswith("http")
+            and not result.startswith("Could not")
+            and not result.startswith("Failed to")
+        ):
+            embed = discord.Embed(title="Dugfrisk Pelle Pic")
+            embed.set_image(url=result)
+            await ctx.send(embed=embed)
+            return
+        await ctx.send(result)
 
     @commands.command(name="glar")
     async def glar(self, ctx: commands.Context) -> None:
