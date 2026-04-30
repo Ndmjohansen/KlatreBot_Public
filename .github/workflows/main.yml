@@ -32,7 +32,11 @@ jobs:
             DISCORD_MAIN_CHANNEL_ID=${{ secrets.DISCORD_MAIN_CHANNEL_ID }}
             DISCORD_SANDBOX_CHANNEL_ID=${{ secrets.DISCORD_SANDBOX_CHANNEL_ID }}
             ADMIN_USER_ID=${{ secrets.ADMIN_USER_ID }}
+            DB_PATH=/home/Admin/klatrebot-data/klatrebot_v2.db
             EOF
+
+            # Ensure DB data dir exists (idempotent)
+            sudo install -d -o Admin -g Admin -m 755 /home/Admin/klatrebot-data
 
             # Patch @POETRY_DIR@ sentinel in the unit file with dirname of `poetry`
             POETRY_DIR="$(dirname "$(command -v poetry)")"

@@ -23,7 +23,7 @@ SyslogIdentifier=klatrebot
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/home/Admin/KlatreBot/KlatreBot_Public /home/Admin/.cache/pypoetry /home/Admin/.config/pypoetry
+ReadWritePaths=/home/Admin/KlatreBot/KlatreBot_Public /home/Admin/klatrebot-data /home/Admin/.cache/pypoetry /home/Admin/.config/pypoetry
 
 # Resource limits
 LimitNOFILE=65536

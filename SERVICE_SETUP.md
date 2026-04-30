@@ -15,7 +15,15 @@ cd /home/Admin/KlatreBot/KlatreBot_Public
 poetry install --sync --no-interaction
 ```
 
-## 2. Create env file
+## 2. Create data dir
+
+DB lives outside the repo so `git pull` / branch ops never touch it.
+
+```bash
+sudo install -d -o Admin -g Admin -m 755 /home/Admin/klatrebot-data
+```
+
+## 3. Create env file
 
 ```bash
 sudo install -d -m 755 /etc/klatrebot
@@ -25,6 +33,7 @@ OPENAI_KEY=<openai api key>
 DISCORD_MAIN_CHANNEL_ID=<channel id>
 DISCORD_SANDBOX_CHANNEL_ID=<channel id>
 ADMIN_USER_ID=<your discord user id>
+DB_PATH=/home/Admin/klatrebot-data/klatrebot_v2.db
 EOF
 ```
 
@@ -33,7 +42,6 @@ Optional overrides (defaults shown — only add lines you want to change):
 ```
 MODEL=gpt-5.4
 SOUL_PATH=./SOUL.MD
-DB_PATH=./klatrebot_v2.db
 TIMEZONE=Europe/Copenhagen
 KLATRETID_DAYS=[0,3]
 KLATRETID_POST_HOUR=17
@@ -43,7 +51,7 @@ RATE_LIMIT_PER_USER_PER_HOUR=30
 LOG_LEVEL=INFO
 ```
 
-## 3. Patch + install systemd unit
+## 4. Patch + install systemd unit
 
 `klatrebot.service` contains a `@POETRY_DIR@` sentinel that needs replacing with the directory of the Poetry binary on PATH (so systemd can find `poetry`).
 
@@ -62,7 +70,7 @@ sudo systemctl enable klatrebot
 sudo systemctl start klatrebot
 ```
 
-## 4. Verify
+## 5. Verify
 
 ```bash
 sudo systemctl status klatrebot
@@ -85,7 +93,7 @@ poetry install --sync --no-interaction
 sudo systemctl restart klatrebot
 ```
 
-If `klatrebot.service` changed: re-run step 3.
+If `klatrebot.service` changed: re-run step 4.
 
 ## Service management
 
