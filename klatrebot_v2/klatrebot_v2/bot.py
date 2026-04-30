@@ -32,6 +32,9 @@ class KlatreBot(commands.Bot):
         # Register cogs
         await self.load_extension("klatrebot_v2.cogs.chat")
         await self.load_extension("klatrebot_v2.cogs.auto_responses")
+        await self.load_extension("klatrebot_v2.cogs.attendance")
+        from klatrebot_v2.tasks import klatretid_scheduler
+        self.loop.create_task(klatretid_scheduler(self))
         self.start_time = datetime.utcnow()
         logger.info("Bot startup completed")
 
