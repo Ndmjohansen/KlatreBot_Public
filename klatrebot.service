@@ -9,7 +9,7 @@ User=Admin
 Group=Admin
 WorkingDirectory=/home/Admin/KlatreBot/KlatreBot_Public
 EnvironmentFile=/etc/klatrebot/klatrebot.env
-# Same poetry-on-PATH trick as the V1 unit. Deploy step rewrites @POETRY_DIR@.
+# Deploy step rewrites @POETRY_DIR@ with `dirname $(command -v poetry)` so systemd can find poetry.
 Environment=PATH=@POETRY_DIR@:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/bin/env poetry run python3 -m klatrebot_v2
 ExecReload=/bin/kill -HUP $MAINPID

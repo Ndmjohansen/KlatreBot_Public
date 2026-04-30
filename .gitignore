@@ -12,3 +12,4 @@ migrate_prod_to_local.ps1
 MIGRATION_GUIDE.md
 tests/__pycache__/*
 backup/data_cleanup/*
+.worktrees/
