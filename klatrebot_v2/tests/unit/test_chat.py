@@ -76,3 +76,28 @@ async def test_reply_includes_recent_context(monkeypatch, tmp_path, fake_respons
     call_kwargs = fake_client.responses.create.await_args.kwargs
     assert "Magnus: første" in call_kwargs["input"]
     assert "Magnus: anden" in call_kwargs["input"]
+
+
+def test_extract_sources_from_response():
+    from klatrebot_v2.llm.chat import _extract_sources
+
+    fake_resp = MagicMock()
+    fake_resp.output = [
+        MagicMock(type="message"),  # not a search call
+        MagicMock(
+            type="web_search_call",
+            action=MagicMock(sources=[
+                MagicMock(url="https://a.dk"),
+                MagicMock(url="https://b.dk"),
+            ]),
+        ),
+    ]
+    assert _extract_sources(fake_resp) == ["https://a.dk", "https://b.dk"]
+
+
+def test_extract_sources_empty_when_no_search():
+    from klatrebot_v2.llm.chat import _extract_sources
+
+    fake_resp = MagicMock()
+    fake_resp.output = [MagicMock(type="message")]
+    assert _extract_sources(fake_resp) == []

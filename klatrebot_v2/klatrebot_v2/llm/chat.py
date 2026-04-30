@@ -14,6 +14,19 @@ class ChatReply(BaseModel):
     sources: list[str] = []
 
 
+def _extract_sources(resp) -> list[str]:
+    """Pull URLs from `web_search_call.action.sources`. Returns [] if not present."""
+    out = getattr(resp, "output", None) or []
+    for item in out:
+        if getattr(item, "type", None) == "web_search_call":
+            action = getattr(item, "action", None)
+            sources = getattr(action, "sources", None) if action else None
+            if not sources:
+                return []
+            return [getattr(s, "url", "") for s in sources if getattr(s, "url", None)]
+    return []
+
+
 # Bot.setup_hook injects the live aiosqlite.Connection here. Tests monkeypatch.
 _get_db_conn: Callable | None = None
 
