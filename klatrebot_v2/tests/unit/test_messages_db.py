@@ -53,3 +53,17 @@ async def test_recent_includes_display_name(db):
     rows = await msg_db.recent_with_authors(db, channel_id=1, limit=10)
     assert rows[0].user_display_name == "Magnus"
     assert rows[0].content == "hej"
+
+
+async def test_in_window_filters_by_time(db):
+    await users_db.upsert(db, discord_user_id=1, display_name="A")
+    base = datetime(2026, 4, 30, 12, 0, tzinfo=timezone.utc)
+    for i in range(5):
+        await msg_db.insert(db, discord_message_id=i, channel_id=1, user_id=1, content=f"m{i}", timestamp_utc=base + timedelta(minutes=i))
+    rows = await msg_db.in_window(
+        db,
+        channel_id=1,
+        start=base + timedelta(minutes=1),
+        end=base + timedelta(minutes=4),
+    )
+    assert [r.content for r in rows] == ["m1", "m2", "m3"]

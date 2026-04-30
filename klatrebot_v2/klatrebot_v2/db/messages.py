@@ -104,3 +104,39 @@ async def recent_with_authors(
         )
         for r in rows
     ]
+
+
+async def in_window(
+    conn: aiosqlite.Connection,
+    *,
+    channel_id: int,
+    start: datetime,
+    end: datetime,
+) -> list[MessageWithAuthor]:
+    """[start, end) window, oldest-first."""
+    cursor = await conn.execute(
+        """
+        SELECT m.discord_message_id, m.channel_id, m.user_id,
+               COALESCE(u.display_name, '?'), m.content, m.timestamp_utc, m.is_bot
+        FROM messages m
+        LEFT JOIN users u ON u.discord_user_id = m.user_id
+        WHERE m.channel_id = ?
+          AND m.timestamp_utc >= ?
+          AND m.timestamp_utc <  ?
+        ORDER BY m.timestamp_utc ASC
+        """,
+        (channel_id, start.isoformat(), end.isoformat()),
+    )
+    rows = await cursor.fetchall()
+    return [
+        MessageWithAuthor(
+            discord_message_id=r[0],
+            channel_id=r[1],
+            user_id=r[2],
+            user_display_name=r[3],
+            content=r[4],
+            timestamp_utc=datetime.fromisoformat(r[5]),
+            is_bot=bool(r[6]),
+        )
+        for r in rows
+    ]
