@@ -175,10 +175,11 @@ class AutoResponsesCog(commands.Cog):
 
 
 def _display_name(member) -> str:
-    nick = getattr(member, "nick", None)
-    if nick:
-        return nick
-    return getattr(member, "global_name", None) or member.name
+    return (
+        getattr(member, "display_name", None)
+        or getattr(member, "global_name", None)
+        or getattr(member, "name", "")
+    )
 
 
 async def setup(bot: commands.Bot) -> None:

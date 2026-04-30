@@ -25,12 +25,19 @@ def _today_local_str() -> str:
 
 
 def _resolve_display_name(user_obj) -> str:
+    """Best-effort channel display name for a Member or User.
+
+    Member.display_name resolves to nick → global_name → username and is the
+    same string Discord shows in the channel. Plain User has no nick attr.
+    """
     if user_obj is None:
         return ""
-    nick = getattr(user_obj, "nick", None)
-    if nick:
-        return nick
-    return getattr(user_obj, "global_name", None) or getattr(user_obj, "name", "") or ""
+    return (
+        getattr(user_obj, "display_name", None)
+        or getattr(user_obj, "global_name", None)
+        or getattr(user_obj, "name", "")
+        or ""
+    )
 
 
 class AttendanceCog(commands.Cog):
@@ -58,7 +65,14 @@ class AttendanceCog(commands.Cog):
             return
 
         existing = await users_db.get(self.bot.db_conn, payload.user_id)
-        display_name = _resolve_display_name(payload.member)
+        # Prefer guild.get_member: cached Member with current server nickname.
+        # payload.member is also Member but its .nick can be stale/missing across raw events.
+        member = None
+        if payload.guild_id is not None:
+            guild = self.bot.get_guild(payload.guild_id)
+            if guild is not None:
+                member = guild.get_member(payload.user_id)
+        display_name = _resolve_display_name(member) or _resolve_display_name(payload.member)
         if not display_name:
             user_obj = self.bot.get_user(payload.user_id)
             if user_obj is None:
