@@ -31,11 +31,6 @@ trap cleanup EXIT
 
 echo "[$(date -Is)] Starting backup of ${DB_PATH}"
 
-if [ ! -f "${DB_PATH}" ]; then
-    echo "ERROR: ${DB_PATH} does not exist"
-    exit 1
-fi
-
 echo "Snapshotting via sqlite3 .backup → ${SNAPSHOT}"
 sqlite3 "${DB_PATH}" ".backup '${SNAPSHOT}'"
 
