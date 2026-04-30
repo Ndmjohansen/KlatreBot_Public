@@ -1,0 +1,36 @@
+name: Tests
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  klatrebot_v2:
+    name: V2 unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: klatrebot_v2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry/virtualenvs
+          key: poetry-v2-${{ runner.os }}-py3.11-${{ hashFiles('klatrebot_v2/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --sync --no-interaction
+
+      - name: Run unit tests
+        run: poetry run pytest -v

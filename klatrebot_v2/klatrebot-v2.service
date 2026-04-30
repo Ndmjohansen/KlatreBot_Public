@@ -1,0 +1,33 @@
+[Unit]
+Description=KlatreBot V2 Discord Bot Service (Phase 1)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=Admin
+Group=Admin
+WorkingDirectory=/home/Admin/KlatreBot/KlatreBot_Public/klatrebot_v2
+EnvironmentFile=/etc/klatrebot/klatrebot-v2.env
+# Same poetry-on-PATH trick as the V1 unit. Deploy step rewrites @POETRY_DIR@.
+Environment=PATH=@POETRY_DIR@:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/env poetry run python3 -m klatrebot_v2
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=klatrebot-v2
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/Admin/KlatreBot/KlatreBot_Public/klatrebot_v2 /home/Admin/.cache/pypoetry /home/Admin/.config/pypoetry
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
