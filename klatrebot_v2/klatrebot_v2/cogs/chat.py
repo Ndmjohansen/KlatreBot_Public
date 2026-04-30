@@ -23,7 +23,11 @@ class ChatCog(commands.Cog):
             return
         start = time.monotonic()
         async with ctx.typing():
-            result = await chat.reply(question=question, asking_user_id=ctx.author.id)
+            result = await chat.reply(
+                question=question,
+                asking_user_id=ctx.author.id,
+                channel_id=ctx.channel.id,
+            )
         elapsed = time.monotonic() - start
         logger.info("llm.reply duration=%.2fs", elapsed)
 
