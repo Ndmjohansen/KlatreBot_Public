@@ -73,6 +73,11 @@ RESPONSES: list[AutoResponse] = [
         pattern=re.compile(r"ekstrabladet\.dk|eb\.dk", re.I),
         handler=lambda m: _static(_EB_ROAST),
     ),
+    AutoResponse(
+        name="glar_midsentence",
+        pattern=re.compile(r"(?<=.)!glar", re.I),
+        handler=lambda m: _static("https://imgur.com/CnRFnel"),
+    ),
 ]
 
 
