@@ -3,7 +3,7 @@ import asyncio
 import logging
 
 from klatrebot_v2 import logging_config
-from klatrebot_v2.bot import KlatreBot, on_command_error
+from klatrebot_v2.bot import KlatreBot
 from klatrebot_v2.settings import get_settings
 
 
@@ -13,7 +13,6 @@ def main() -> None:
 
     s = get_settings()
     bot = KlatreBot()
-    bot.on_command_error = on_command_error
 
     @bot.event
     async def on_error(event_method: str, *args, **kwargs):

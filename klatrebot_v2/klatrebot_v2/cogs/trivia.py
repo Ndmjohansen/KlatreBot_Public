@@ -1,4 +1,5 @@
 """Lightweight trivia commands."""
+import asyncio
 from datetime import datetime
 
 from discord.ext import commands
@@ -24,7 +25,8 @@ class TriviaCog(commands.Cog):
 
     @commands.command(name="pelle")
     async def pelle(self, ctx: commands.Context, *, arg: str | None = None) -> None:
-        await ctx.reply(where_the_fuck_is_pelle(arg=arg))
+        result = await asyncio.to_thread(where_the_fuck_is_pelle, arg=arg)
+        await ctx.reply(result)
 
     @commands.command(name="glar")
     async def glar(self, ctx: commands.Context) -> None:

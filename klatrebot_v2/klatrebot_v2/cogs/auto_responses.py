@@ -43,16 +43,7 @@ async def _static(text: str) -> str:
     return text
 
 
-async def _handle_uge(_msg: discord.Message) -> str | None:
-    return None
-
-
 RESPONSES: list[AutoResponse] = [
-    AutoResponse(
-        name="ugenr_match",
-        pattern=re.compile(r"\buge\s\d{1,2}\b", re.I),
-        handler=_handle_uge,
-    ),
     AutoResponse(
         name="downus",
         pattern=re.compile(r"!downus|fail", re.I),

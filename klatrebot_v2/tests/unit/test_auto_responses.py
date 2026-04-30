@@ -16,9 +16,7 @@ def test_first_match_wins_and_patterns_compile():
     assert first_match("helt almindelig sætning") is None
 
 
-def test_uge_match_pattern():
+def test_no_ugenr_match_in_responses():
+    """ugenr_match removed: silent no-op handler would block downstream matches."""
     from klatrebot_v2.cogs.auto_responses import RESPONSES
-    pat = next(ar.pattern for ar in RESPONSES if ar.name == "ugenr_match")
-    assert pat.search("hvad sker der i uge 35?")
-    assert pat.search("uge42") is None
-    assert pat.search("uge 35")
+    assert all(ar.name != "ugenr_match" for ar in RESPONSES)

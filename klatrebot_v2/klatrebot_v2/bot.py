@@ -48,10 +48,9 @@ class KlatreBot(commands.Bot):
             await connection.close(self.db_conn)
         await super().close()
 
-
-async def on_command_error(ctx: commands.Context, error: Exception) -> None:
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.reply("Slap af.")
-        return
-    logger.exception("Command %s failed", ctx.command, exc_info=error)
-    await ctx.reply("Det kan jeg desværre ikke svare på.")
+    async def on_command_error(self, ctx: commands.Context, error: Exception) -> None:
+        if isinstance(error, commands.CommandOnCooldown):
+            await ctx.reply("Slap af.")
+            return
+        logger.exception("Command %s failed", ctx.command, exc_info=error)
+        await ctx.reply("Det kan jeg desværre ikke svare på.")

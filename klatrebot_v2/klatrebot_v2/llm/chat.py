@@ -1,7 +1,15 @@
 """Discord-decoupled LLM call pipeline."""
+import re
 from typing import Callable
 
 from pydantic import BaseModel
+
+_MENTION_RE = re.compile(r"<@!?(\d+)>")
+
+
+def _sanitize_mentions(text: str) -> str:
+    """Insert zero-width space inside Discord mentions to prevent unintended pings."""
+    return _MENTION_RE.sub(lambda m: f"<@​{m.group(1)}>", text)
 
 from klatrebot_v2.settings import get_settings
 from klatrebot_v2.llm.client import get_client
@@ -61,7 +69,7 @@ async def reply(*, question: str, asking_user_id: int, channel_id: int) -> ChatR
         text={"verbosity": "medium"},
         include=["web_search_call.action.sources"],
     )
-    return ChatReply(text=resp.output_text or "", sources=_extract_sources(resp))
+    return ChatReply(text=_sanitize_mentions(resp.output_text or ""), sources=_extract_sources(resp))
 
 
 _SUMMARY_INSTRUCTIONS = """
@@ -90,4 +98,4 @@ async def summarize(msgs) -> str:
         reasoning={"effort": "medium"},
         text={"verbosity": "medium"},
     )
-    return resp.output_text or ""
+    return _sanitize_mentions(resp.output_text or "")
