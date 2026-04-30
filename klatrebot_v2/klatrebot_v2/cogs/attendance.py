@@ -39,13 +39,9 @@ class AttendanceCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
-        await self._handle_reaction(payload, retract=False)
+        await self._handle_reaction(payload)
 
-    @commands.Cog.listener()
-    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
-        await self._handle_reaction(payload, retract=True)
-
-    async def _handle_reaction(self, payload: discord.RawReactionActionEvent, *, retract: bool) -> None:
+    async def _handle_reaction(self, payload: discord.RawReactionActionEvent) -> None:
         if payload.user_id == (self.bot.user.id if self.bot.user else 0):
             return
         sess = await att_db.active_session(
@@ -55,9 +51,9 @@ class AttendanceCog(commands.Cog):
             return
         emoji = payload.emoji.name
         if emoji == "✅":
-            status = "no" if retract else "yes"
+            status = "yes"
         elif emoji == "❌":
-            status = "yes" if retract else "no"
+            status = "no"
         else:
             return
 
