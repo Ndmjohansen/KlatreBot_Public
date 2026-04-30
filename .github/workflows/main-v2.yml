@@ -1,0 +1,45 @@
+name: Deploy V2
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy klatrebot-v2 to Pi
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd ~/KlatreBot/KlatreBot_Public/
+            git pull
+
+            cd klatrebot_v2
+            poetry install --sync --no-interaction
+
+            # Atomic write of systemd EnvironmentFile (mode 600 from creation;
+            # quoted heredoc prevents shell expansion of $/`).
+            sudo install -d -m 755 /etc/klatrebot
+            sudo install -m 600 -o root -g root /dev/stdin /etc/klatrebot/klatrebot-v2.env <<'EOF'
+            DISCORD_KEY=${{ secrets.BOT_KEY }}
+            OPENAI_KEY=${{ secrets.OPENAI_API }}
+            DISCORD_MAIN_CHANNEL_ID=${{ secrets.DISCORD_MAIN_CHANNEL_ID }}
+            DISCORD_SANDBOX_CHANNEL_ID=${{ secrets.DISCORD_SANDBOX_CHANNEL_ID }}
+            ADMIN_USER_ID=${{ secrets.ADMIN_USER_ID }}
+            EOF
+
+            # Patch @POETRY_DIR@ sentinel in the unit file with dirname of `poetry`
+            POETRY_DIR="$(dirname "$(command -v poetry)")"
+            sed "s|@POETRY_DIR@|${POETRY_DIR}|g" klatrebot-v2.service \
+              | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot-v2.service
+
+            sudo systemctl daemon-reload
+            sudo systemctl restart klatrebot-v2
+            sudo systemctl status klatrebot-v2 --no-pager
