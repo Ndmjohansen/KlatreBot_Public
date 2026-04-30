@@ -67,9 +67,13 @@ class TriviaCog(commands.Cog):
         if now_local.weekday() in s.klatretid_days and now_local.hour < s.klatretid_post_hour:
             await ctx.send("Ro på kaptajn, folket er på arbejde")
             return
-        embed = discord.Embed(description="@everyone Hva sker der? er i.. er i glar?")
+        embed = discord.Embed(description="Hva sker der? er i.. er i glar?")
         embed.set_image(url="https://imgur.com/CnRFnel.gif")
-        await ctx.send(embed=embed)
+        await ctx.send(
+            content="@everyone",
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(everyone=True),
+        )
 
 
 async def setup(bot: commands.Bot) -> None:
