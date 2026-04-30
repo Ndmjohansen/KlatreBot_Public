@@ -43,7 +43,17 @@ async def _post_klatretid_embed(bot: commands.Bot, *, post_time_local: datetime)
     if channel is None:
         logger.error("klatretid: main channel %d not found", s.discord_main_channel_id)
         return
+    await post_klatretid_embed_in(bot, channel=channel, post_time_local=post_time_local)
 
+
+async def post_klatretid_embed_in(
+    bot: commands.Bot,
+    *,
+    channel: discord.abc.Messageable,
+    post_time_local: datetime,
+) -> None:
+    """Post klatretid embed + create attendance session in `channel`."""
+    s = get_settings()
     embed = discord.Embed(
         title="Klatretid 🧗",
         description=f"Hvem kommer kl. {s.klatretid_start_hour}? React med ✅ / ❌.",

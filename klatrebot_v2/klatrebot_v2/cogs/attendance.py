@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from klatrebot_v2.db import attendance as att_db, users as users_db
 from klatrebot_v2.settings import get_settings
+from klatrebot_v2.tasks import post_klatretid_embed_in
 
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,23 @@ class AttendanceCog(commands.Cog):
             (f"{u.display_name} 🐔" if u.discord_user_id in bailer_ids else u.display_name) for u in no
         ) or "ingen"
         await ctx.reply(f"Klatretid status:\n✅ {yes_names}\n❌ {no_names}")
+
+    @commands.command(name="debug_klatretid")
+    async def debug_klatretid(self, ctx: commands.Context) -> None:
+        """Admin-only: spawn a klatretid session in the current channel right now."""
+        s = get_settings()
+        if ctx.author.id != s.admin_user_id:
+            await ctx.reply("Kun admin.")
+            return
+        tz = pytz.timezone(s.timezone)
+        now_local = datetime.now(timezone.utc).astimezone(tz)
+        existing = await att_db.active_session(
+            self.bot.db_conn, channel_id=ctx.channel.id, today_local=now_local.strftime("%Y-%m-%d")
+        )
+        if existing is not None:
+            await ctx.reply("Der er allerede en klatretid-session i denne kanal i dag.")
+            return
+        await post_klatretid_embed_in(self.bot, channel=ctx.channel, post_time_local=now_local)
 
 
 async def setup(bot: commands.Bot) -> None:
