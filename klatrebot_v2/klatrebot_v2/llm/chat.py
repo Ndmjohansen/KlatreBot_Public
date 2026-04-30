@@ -56,7 +56,9 @@ async def reply(*, question: str, asking_user_id: int, channel_id: int) -> ChatR
     resp = await client.responses.create(
         model=s.model,
         input=full_input,
+        tools=[{"type": "web_search"}],
         reasoning={"effort": "medium"},
         text={"verbosity": "medium"},
+        include=["web_search_call.action.sources"],
     )
-    return ChatReply(text=resp.output_text or "", sources=[])
+    return ChatReply(text=resp.output_text or "", sources=_extract_sources(resp))

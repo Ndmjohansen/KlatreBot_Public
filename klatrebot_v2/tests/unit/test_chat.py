@@ -44,6 +44,8 @@ async def test_reply_returns_chat_reply(monkeypatch, tmp_path, fake_response, db
     assert "Du er en klatrebot." in call_kwargs["input"]
     assert "hvad så" in call_kwargs["input"]
     assert "42" in call_kwargs["input"]
+    assert call_kwargs["tools"] == [{"type": "web_search"}]
+    assert "web_search_call.action.sources" in call_kwargs["include"]
 
 
 async def test_reply_includes_recent_context(monkeypatch, tmp_path, fake_response, db):
