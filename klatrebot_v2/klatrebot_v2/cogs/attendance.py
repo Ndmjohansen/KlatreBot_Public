@@ -8,7 +8,11 @@ from discord.ext import commands
 
 from klatrebot_v2.db import attendance as att_db, users as users_db
 from klatrebot_v2.settings import get_settings
-from klatrebot_v2.tasks import post_klatretid_embed_in
+from klatrebot_v2.tasks import (
+    DEFAULT_KLATRETID_DESCRIPTION,
+    build_klatretid_embed,
+    post_klatretid_embed_in,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -18,6 +22,15 @@ def _today_local_str() -> str:
     s = get_settings()
     tz = pytz.timezone(s.timezone)
     return datetime.now(timezone.utc).astimezone(tz).strftime("%Y-%m-%d")
+
+
+def _resolve_display_name(user_obj) -> str:
+    if user_obj is None:
+        return ""
+    nick = getattr(user_obj, "nick", None)
+    if nick:
+        return nick
+    return getattr(user_obj, "global_name", None) or getattr(user_obj, "name", "") or ""
 
 
 class AttendanceCog(commands.Cog):
@@ -47,7 +60,22 @@ class AttendanceCog(commands.Cog):
             status = "yes" if retract else "no"
         else:
             return
-        await users_db.upsert(self.bot.db_conn, discord_user_id=payload.user_id, display_name=str(payload.user_id))
+
+        existing = await users_db.get(self.bot.db_conn, payload.user_id)
+        display_name = _resolve_display_name(payload.member)
+        if not display_name:
+            user_obj = self.bot.get_user(payload.user_id)
+            if user_obj is None:
+                try:
+                    user_obj = await self.bot.fetch_user(payload.user_id)
+                except discord.HTTPException:
+                    user_obj = None
+            display_name = _resolve_display_name(user_obj)
+        if not display_name:
+            display_name = existing.display_name if existing is not None else str(payload.user_id)
+        await users_db.upsert(
+            self.bot.db_conn, discord_user_id=payload.user_id, display_name=display_name
+        )
         await att_db.record_event(
             self.bot.db_conn,
             session_id=sess.id,
@@ -55,6 +83,38 @@ class AttendanceCog(commands.Cog):
             status=status,
             timestamp_utc=datetime.now(timezone.utc),
         )
+        await self._refresh_embed(payload.channel_id, sess)
+
+    async def _refresh_embed(self, channel_id: int, sess) -> None:
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            return
+        try:
+            msg = await channel.fetch_message(sess.message_id)
+        except discord.HTTPException:
+            logger.exception("klatretid: fetch_message failed for %d", sess.message_id)
+            return
+        yes, no = await att_db.tally(self.bot.db_conn, session_id=sess.id)
+        bailers = await att_db.bailers(self.bot.db_conn, session_id=sess.id)
+        bailer_ids = {u.discord_user_id for u in bailers}
+        if not yes and not no:
+            embed = build_klatretid_embed()
+        else:
+            yes_names = ", ".join(u.display_name for u in yes)
+            no_names = ", ".join(
+                (f"{u.display_name} 🐔" if u.discord_user_id in bailer_ids else u.display_name)
+                for u in no
+            )
+            description = (
+                f"{DEFAULT_KLATRETID_DESCRIPTION}"
+                f"\n✅: {yes_names}"
+                f"\n❌: {no_names}"
+            )
+            embed = build_klatretid_embed(description=description)
+        try:
+            await msg.edit(embed=embed)
+        except discord.HTTPException:
+            logger.exception("klatretid: edit message %d failed", sess.message_id)
 
     @commands.command(name="klatring")
     async def klatring(self, ctx: commands.Context) -> None:
