@@ -23,7 +23,7 @@ SyslogIdentifier=klatrebot
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=@PROJECT_DIR@ @DATA_DIR@ /home/@SERVICE_USER@/.cache/pypoetry /home/@SERVICE_USER@/.config/pypoetry
+ReadWritePaths=@PROJECT_DIR@ @DATA_DIR@ -/home/@SERVICE_USER@/.cache/pypoetry -/home/@SERVICE_USER@/.config/pypoetry -/home/@SERVICE_USER@/.local/share/pypoetry
 
 # Resource limits
 LimitNOFILE=65536
