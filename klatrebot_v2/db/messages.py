@@ -45,9 +45,17 @@ _embed_tasks: set[asyncio.Task] = set()
 
 
 def _schedule_embed(conn: aiosqlite.Connection, message_id: int, content: str) -> None:
-    """Fire-and-forget: embed message and upsert vector. Skips silently on any failure."""
-    from klatrebot_v2.settings import get_settings
-    if not get_settings().embeddings_enabled:
+    """Fire-and-forget: embed message and upsert vector. Skips silently on any failure.
+
+    Wraps get_settings() in try/except — tests for the DB layer call insert()
+    without setting up required env vars, in which case Settings construction
+    raises ValidationError. Behave like embeddings are disabled.
+    """
+    try:
+        from klatrebot_v2.settings import get_settings
+        if not get_settings().embeddings_enabled:
+            return
+    except Exception:
         return
     if not (content or "").strip():
         return
