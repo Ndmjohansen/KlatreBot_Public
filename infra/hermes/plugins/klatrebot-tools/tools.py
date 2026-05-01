@@ -1,4 +1,9 @@
-"""Tool handlers — call the Pi's read-only HTTP API. Always return a JSON string."""
+"""Tool handlers — call the Pi's read-only HTTP API. Always return a JSON string.
+
+Hermes registry calls handlers synchronously, so we use httpx.Client (sync), not
+AsyncClient. Handlers receive (args: dict) plus arbitrary **kwargs from the
+registry (task_id, etc.) — accept them with **_kwargs.
+"""
 import json
 import logging
 import os
@@ -28,14 +33,14 @@ def _err(msg: str) -> str:
     return json.dumps({"ok": False, "error": msg}, ensure_ascii=False)
 
 
-async def klatrebot_query(args: dict) -> str:
+def klatrebot_query(args: dict, **_kwargs) -> str:
     sql = args.get("sql", "")
     if not sql.strip():
         return _err("missing 'sql'")
     payload = {"sql": sql, "params": args.get("params", []), "limit": args.get("limit", 100)}
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as http:
-            resp = await http.post(f"{API_URL}/api/query", json=payload, headers=_headers())
+        with httpx.Client(timeout=TIMEOUT) as http:
+            resp = http.post(f"{API_URL}/api/query", json=payload, headers=_headers())
         if resp.status_code != 200:
             return _err(f"http {resp.status_code}: {resp.text[:200]}")
         return _ok(resp.json())
@@ -43,10 +48,10 @@ async def klatrebot_query(args: dict) -> str:
         return _err(f"request failed: {e}")
 
 
-async def klatrebot_schema(args: dict) -> str:
+def klatrebot_schema(args: dict, **_kwargs) -> str:
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as http:
-            resp = await http.get(f"{API_URL}/api/schema", headers=_headers())
+        with httpx.Client(timeout=TIMEOUT) as http:
+            resp = http.get(f"{API_URL}/api/schema", headers=_headers())
         if resp.status_code != 200:
             return _err(f"http {resp.status_code}: {resp.text[:200]}")
         return _ok(resp.json())
@@ -54,7 +59,7 @@ async def klatrebot_schema(args: dict) -> str:
         return _err(f"request failed: {e}")
 
 
-async def klatrebot_search_semantic(args: dict) -> str:
+def klatrebot_search_semantic(args: dict, **_kwargs) -> str:
     query = args.get("query", "")
     if not query.strip():
         return _err("missing 'query'")
@@ -66,8 +71,8 @@ async def klatrebot_search_semantic(args: dict) -> str:
         if k in args and args[k] is not None:
             payload[k] = args[k]
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as http:
-            resp = await http.post(f"{API_URL}/api/search_messages_semantic", json=payload, headers=_headers())
+        with httpx.Client(timeout=TIMEOUT) as http:
+            resp = http.post(f"{API_URL}/api/search_messages_semantic", json=payload, headers=_headers())
         if resp.status_code != 200:
             return _err(f"http {resp.status_code}: {resp.text[:200]}")
         return _ok(resp.json())
@@ -75,11 +80,11 @@ async def klatrebot_search_semantic(args: dict) -> str:
         return _err(f"request failed: {e}")
 
 
-async def klatrebot_health(args: dict) -> str:
+def klatrebot_health(args: dict, **_kwargs) -> str:
     try:
         t0 = time.monotonic()
-        async with httpx.AsyncClient(timeout=3.0) as http:
-            resp = await http.get(f"{API_URL}/health")
+        with httpx.Client(timeout=3.0) as http:
+            resp = http.get(f"{API_URL}/health")
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         return _ok({"status": resp.json().get("status"), "elapsed_ms": elapsed_ms, "code": resp.status_code})
     except Exception as e:
