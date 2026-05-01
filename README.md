@@ -1,6 +1,6 @@
 # KlatreBot V2
 
-V1 archived under `klatrebot_v1/` — kept for reference, not deployed.
+Danish-language Discord bot for a climbing group. Core: discord.py + OpenAI for chat / summaries / attendance helpers. `!gpt` routes via a small classifier to either the fast OpenAI path or a Hermes Agent on the LAN for history-aware queries — see `infra/` for the agent integration. V1 archived under `klatrebot_v1/`.
 
 ## Run locally
 

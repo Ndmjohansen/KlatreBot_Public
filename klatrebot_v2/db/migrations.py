@@ -2,7 +2,7 @@
 import aiosqlite
 
 
-_DDL = [
+DDL = [
     """
     CREATE TABLE IF NOT EXISTS users (
         discord_user_id  INTEGER PRIMARY KEY,
@@ -50,7 +50,29 @@ _DDL = [
 ]
 
 
+VEC_DDL =(
+    "CREATE VIRTUAL TABLE IF NOT EXISTS message_embeddings "
+    "USING vec0(message_id INTEGER PRIMARY KEY, embedding FLOAT[1536])"
+)
+
+
 async def run(conn: aiosqlite.Connection) -> None:
-    for stmt in _DDL:
+    for stmt in DDL:
         await conn.execute(stmt)
+    try:
+        await conn.execute(VEC_DDL)
+    except aiosqlite.OperationalError:
+        # vec0 extension not loaded; semantic search unavailable but other tables still usable
+        pass
     await conn.commit()
+
+
+def run_sync(conn) -> None:
+    """Apply schema to a stdlib sqlite3.Connection. Skips vec0 if extension unavailable."""
+    for stmt in DDL:
+        conn.execute(stmt)
+    try:
+        conn.execute(VEC_DDL)
+    except Exception:
+        pass
+    conn.commit()

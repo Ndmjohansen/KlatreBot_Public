@@ -12,7 +12,7 @@ V1 source is archived under `klatrebot_v1/` (kept for reference; not deployed).
 
 - Project uses **Poetry**. Poetry manages its own venv (default location); do not create or activate a venv manually. `poetry run python3 -m klatrebot_v2` resolves the right interpreter automatically.
 - Install / sync deps: `poetry install --sync`.
-- Secrets via `.env` (local) or `/etc/klatrebot/klatrebot.env` (systemd `EnvironmentFile`). Keys: `DISCORD_KEY`, `OPENAI_KEY`, `DISCORD_MAIN_CHANNEL_ID`, `DISCORD_SANDBOX_CHANNEL_ID`, `ADMIN_USER_ID`. See `.env.example`.
+- Secrets via `.env` (local) or `/etc/klatrebot/klatrebot.env` (systemd `EnvironmentFile`). Required keys: `DISCORD_KEY`, `OPENAI_KEY`, `DISCORD_MAIN_CHANNEL_ID`, `DISCORD_SANDBOX_CHANNEL_ID`, `ADMIN_USER_ID`. Optional Hermes / API keys: `HERMES_ENABLED`, `HERMES_URL`, `HERMES_TOKEN`, `HERMES_MODEL`, `API_ENABLED`, `API_HOST`, `API_PORT`, `API_TOKEN`. See `.env.example`.
 
 ## Common commands
 
@@ -40,25 +40,46 @@ Core layers:
 
 - `klatrebot_v2/bot.py` — `KlatreBot` class; `discord.py` `commands.Bot`. Loads cogs on startup.
 - `klatrebot_v2/cogs/` — Discord command/event handlers split by domain:
-  - `chat.py` — `!gpt` command, on_message LLM handler, rate limiting.
+  - `chat.py` — `!gpt` command. Routes via `llm/router.py` classifier (gpt-5.4-nano) to either the existing OpenAI chat path OR the Hermes Agent on the LAN. Falls back to chat path on Hermes failure. Supports `--fast`/`--agent` overrides.
+  - `api.py` — aiohttp read-only HTTP API exposed to Hermes on the LAN. Endpoints: `/health`, `/api/schema`, `/api/query` (SELECT/WITH/EXPLAIN only, statement timeout, `PRAGMA query_only=1`), `/api/search_messages_semantic`. Bearer auth. Started in `bot.setup_hook`.
+  - `hermes_health.py` — 60s probe loop; posts admin-mention alerts to sandbox channel on Hermes up↔down transitions (30 min cooldown on down-alerts).
   - `attendance.py` — Klatretid attendance tracking (`!klatretid`, `!fremmøde`, etc.).
   - `auto_responses.py` — Keyword-triggered auto-responses (`!glar`).
   - `referat.py` — `!referat` meeting-summary command.
   - `trivia.py` — Trivia/quiz commands.
 - `klatrebot_v2/llm/` — LLM integration:
-  - `client.py` — `AsyncOpenAI` wrapper.
-  - `chat.py` — Chat completion logic with recent message context.
+  - `client.py` — `AsyncOpenAI` wrapper for OpenAI calls.
+  - `chat.py` — Chat completion logic with recent message context (the "fast" branch of `!gpt`).
   - `prompt.py` — System prompt loading from `SOUL.MD`.
   - `ratelimit.py` — Per-user rate limiting.
+  - `router.py` — `classify(question)` returns `"chat"` or `"agent"`. Cheap nano model with JSON-schema structured output. Failures default to `"chat"`.
+  - `hermes_client.py` — `AsyncOpenAI` pointed at Hermes' OpenAI-compatible `/v1`. `health()`, `is_available()` cache, `ask()`. `HermesUnavailable` raised on disabled / cached-down / live error.
+  - `embeddings.py` — Batched OpenAI embeddings (text-embedding-3-small) for the message vector store.
 - `klatrebot_v2/db/` — Database layer (aiosqlite):
-  - `connection.py` — DB connection + WAL mode setup.
-  - `migrations.py` — Schema creation (`CREATE TABLE IF NOT EXISTS`).
+  - `connection.py` — DB connection + WAL mode + sqlite-vec extension load.
+  - `migrations.py` — Schema creation (`CREATE TABLE IF NOT EXISTS`); includes vec0 virtual table for `message_embeddings`.
   - `messages.py`, `users.py`, `attendance.py`, `models.py` — CRUD per domain.
+  - `embeddings.py` — vec0 wrappers (`upsert`, `upsert_many`, `existing_ids`, `search`).
 - `klatrebot_v2/settings.py` — `pydantic-settings` config; reads env vars.
 - `klatrebot_v2/tasks.py` — Scheduled background tasks (klatretid announcements, etc.).
 - `klatrebot_v2/pelle.py` — `whereTheFuckIsPelle` feature helper.
 - `klatrebot_v2/time_utils.py` — Timezone-aware datetime helpers.
 - `klatrebot_v2/logging_config.py` — Logging setup.
+
+## Hermes integration
+
+Complex `!gpt` queries (history lookups, multi-step reasoning, attendance trends) are routed to a Hermes Agent (Nous Research) running on a separate Ubuntu LAN host. Hermes calls back into the bot via the read-only HTTP API in `cogs/api.py`. The `klatrebot-tools` Hermes plugin lives at `infra/hermes/plugins/klatrebot-tools/` and ships with the repo.
+
+Plugin handler convention: tool functions are **synchronous** (`def`, not `async def`) and accept `**_kwargs` to swallow registry extras like `task_id`. They return a JSON string `{"ok": true, "data": ...}` or `{"ok": false, "error": "..."}`. Use `httpx.Client` (sync), not `AsyncClient`.
+
+Read-only enforcement layers (Pi side, in `cogs/api.py`):
+1. Separate `aiosqlite` connection opened with `mode=ro` URI.
+2. `PRAGMA query_only = 1`.
+3. SQL guard: only `SELECT|WITH|EXPLAIN|safe-PRAGMA` accepted.
+4. Statement timeout via `asyncio.wait_for`.
+Pi → API and Ubuntu → Hermes are LAN-only, gated by UFW + bearer tokens.
+
+See `infra/README.md` for the architecture overview and `infra/SETUP_NOTES.md` (gitignored) for live host configuration.
 
 ## Conventions
 
