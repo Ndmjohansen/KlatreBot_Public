@@ -23,7 +23,20 @@ jobs:
             git checkout main || git checkout -b main origin/main
             git pull --ff-only origin main
 
-            poetry install --sync --no-interaction
+            export PATH="$HOME/.local/bin:$PATH"
+            POETRY_BIN="$(command -v poetry || true)"
+            if [ -z "$POETRY_BIN" ]; then
+              echo "Poetry not found on PATH; installing for $(id -un)"
+              command -v curl >/dev/null 2>&1 || { echo "curl is required to install Poetry" >&2; exit 1; }
+              curl -sSL https://install.python-poetry.org | python3 -
+              POETRY_BIN="$(command -v poetry || true)"
+            fi
+            if [ -z "$POETRY_BIN" ]; then
+              echo "Poetry install completed, but poetry is still not on PATH" >&2
+              exit 1
+            fi
+
+            "$POETRY_BIN" install --sync --no-interaction
 
             # Atomic write of systemd EnvironmentFile (mode 600 from creation;
             # quoted heredoc prevents shell expansion of $/`).
@@ -41,7 +54,7 @@ jobs:
             sudo install -d -o Admin -g Admin -m 755 /home/Admin/klatrebot-data
 
             # Patch deployment sentinels in the unit file.
-            POETRY_DIR="$(dirname "$(command -v poetry)")"
+            POETRY_DIR="$(dirname "$POETRY_BIN")"
             sed \
               -e "s|@SERVICE_USER@|Admin|g" \
               -e "s|@PROJECT_DIR@|/home/Admin/KlatreBot/KlatreBot_Public|g" \

@@ -30,16 +30,22 @@ if [ ! -d "$PROJECT_DIR" ]; then
     exit 1
 fi
 
-POETRY_BIN="$(sudo -u "$TARGET_USER" bash -lc 'command -v poetry' || true)"
+POETRY_BIN="$(sudo -H -u "$TARGET_USER" bash -lc 'export PATH="$HOME/.local/bin:$PATH"; command -v poetry' || true)"
 if [ -z "$POETRY_BIN" ]; then
-    echo "poetry not found on PATH for $TARGET_USER — install: curl -sSL https://install.python-poetry.org | python3 -" >&2
+    echo "Poetry not found on PATH for $TARGET_USER; installing with the official installer"
+    sudo -H -u "$TARGET_USER" bash -lc \
+        'set -e; command -v curl >/dev/null 2>&1 || { echo "curl is required to install Poetry" >&2; exit 1; }; curl -sSL https://install.python-poetry.org | python3 -'
+    POETRY_BIN="$(sudo -H -u "$TARGET_USER" bash -lc 'export PATH="$HOME/.local/bin:$PATH"; command -v poetry' || true)"
+fi
+if [ -z "$POETRY_BIN" ]; then
+    echo "Poetry install completed, but poetry is still not on PATH for $TARGET_USER" >&2
     exit 1
 fi
 POETRY_DIR="$(dirname "$POETRY_BIN")"
 echo "Using poetry at: $POETRY_BIN"
 
 echo "[1/6] Installing dependencies"
-sudo -u "$TARGET_USER" bash -lc \
+sudo -H -u "$TARGET_USER" bash -lc \
     "cd '$PROJECT_DIR' && '$POETRY_BIN' install --sync --no-interaction"
 
 echo "[2/6] Creating data dir $DATA_DIR"
