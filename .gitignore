@@ -13,3 +13,4 @@ MIGRATION_GUIDE.md
 tests/__pycache__/*
 backup/data_cleanup/*
 .worktrees/
+docs/superpowers/
