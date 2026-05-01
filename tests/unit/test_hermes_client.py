@@ -149,11 +149,12 @@ def test_parse_overrides_fast():
     assert ov == "chat"
 
 
-def test_parse_overrides_agent():
+def test_parse_overrides_agent_flag_not_recognized():
+    """--agent is no longer a flag; !agent is its own command. Flag is treated as part of text."""
     from klatrebot_v2.cogs.chat import _parse_overrides
     cleaned, ov = _parse_overrides("hvem klatrede sidst --agent")
-    assert cleaned == "hvem klatrede sidst"
-    assert ov == "agent"
+    assert cleaned == "hvem klatrede sidst --agent"
+    assert ov is None
 
 
 def test_parse_overrides_none():

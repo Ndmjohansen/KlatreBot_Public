@@ -1,4 +1,4 @@
-"""!gpt command. Routes between fast chat path and Hermes agent."""
+"""!gpt + !agent commands. !gpt routes via classifier; !agent forces Hermes path."""
 import logging
 import time
 
@@ -12,15 +12,16 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_overrides(question: str) -> tuple[str, str | None]:
-    """Strip --fast / --agent flags. Returns (cleaned_question, override or None)."""
+    """Strip --fast flag. Returns (cleaned_question, override or None).
+
+    Forced-agent path is exposed as the !agent command, not a flag.
+    """
     parts = question.split()
     override: str | None = None
     keep: list[str] = []
     for p in parts:
         if p == "--fast" and override is None:
             override = "chat"
-        elif p == "--agent" and override is None:
-            override = "agent"
         else:
             keep.append(p)
     return " ".join(keep), override
@@ -54,7 +55,7 @@ class ChatCog(commands.Cog):
             mentions = {u.id: u.display_name for u in ctx.message.mentions}
             result, used_route = await self._dispatch(
                 route=route,
-                explicit_agent=(override == "agent"),
+                explicit_agent=False,
                 question=cleaned,
                 ctx=ctx,
                 mentions=mentions,
@@ -64,8 +65,47 @@ class ChatCog(commands.Cog):
         logger.info("llm.reply duration=%.2fs route=%s", elapsed, used_route)
 
         text = result.text
-        if used_route == "chat" and route == "agent" and override != "agent":
+        if used_route == "chat" and route == "agent":
             text += "\n\n_(hurtigt svar — agent utilgængelig)_"
+        if result.sources:
+            text += f"\n\n_Kilder: {', '.join(result.sources[:3])}_"
+        await ctx.reply(
+            text,
+            allowed_mentions=discord.AllowedMentions(
+                users=True, everyone=False, roles=False, replied_user=True
+            ),
+        )
+
+    @commands.command(name="agent")
+    async def agent(self, ctx: commands.Context, *, question: str) -> None:
+        """Force the Hermes agent path. No classifier call."""
+        if not ratelimit.check_and_record(ctx.author.id):
+            logger.info("ratelimit.blocked user_id=%d", ctx.author.id)
+            await ctx.reply("Nu slapper du fandme lige lidt af med de spørgsmål")
+            return
+
+        cleaned = question.strip()
+        if not cleaned:
+            await ctx.reply("Spørg om noget.")
+            return
+
+        logger.info("router.forced route=agent user_id=%d", ctx.author.id)
+
+        start = time.monotonic()
+        async with ctx.typing():
+            mentions = {u.id: u.display_name for u in ctx.message.mentions}
+            result, used_route = await self._dispatch(
+                route="agent",
+                explicit_agent=True,
+                question=cleaned,
+                ctx=ctx,
+                mentions=mentions,
+            )
+
+        elapsed = time.monotonic() - start
+        logger.info("llm.reply duration=%.2fs route=%s", elapsed, used_route)
+
+        text = result.text
         if result.sources:
             text += f"\n\n_Kilder: {', '.join(result.sources[:3])}_"
         await ctx.reply(
@@ -97,7 +137,7 @@ class ChatCog(commands.Cog):
             except hermes_client.HermesUnavailable as e:
                 logger.warning("hermes unavailable: %s", e)
                 if explicit_agent:
-                    msg = "Hermes er nede lige nu. Prøv igen senere eller drop `--agent`."
+                    msg = "Hermes er nede lige nu. Prøv `!gpt` i stedet."
                     return chat.ChatReply(text=msg), "agent_failed"
 
         result = await chat.reply(
