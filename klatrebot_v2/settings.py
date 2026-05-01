@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     # Router + Hermes
     classifier_model: str = "gpt-5.4-nano"
-    classifier_timeout_seconds: float = 1.5
+    classifier_timeout_seconds: float = 3.0
     hermes_enabled: bool = False
     hermes_url: str = "http://localhost:8642"
     hermes_token: str = ""
