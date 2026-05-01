@@ -49,6 +49,9 @@ class KlatreBot(commands.Bot):
         await super().close()
 
     async def on_command_error(self, ctx: commands.Context, error: Exception) -> None:
+        if isinstance(error, commands.CommandNotFound):
+            logger.debug("Ignoring unknown command: %s", error)
+            return
         if isinstance(error, commands.CommandOnCooldown):
             await ctx.reply("Slap af.")
             return
