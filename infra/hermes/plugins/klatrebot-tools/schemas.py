@@ -1,45 +1,35 @@
-"""JSON schemas for klatrebot-tools plugin. Hermes shows these to the LLM."""
+"""JSON schemas exposed to the LLM for the klatrebot-tools plugin."""
 
-GET_RECENT_MESSAGES = {
-    "name": "get_recent_messages",
+KLATREBOT_QUERY = {
+    "name": "klatrebot_query",
     "description": (
-        "Hent de seneste beskeder fra en kanal i KlatreBots historik. "
-        "Returnerer liste sorteret ældst-først inden for vinduet."
+        "Kør vilkårligt SELECT/WITH/EXPLAIN på KlatreBots SQLite database (read-only). "
+        "Bruges til alle slags opslag: beskeder, brugere, fremmøde, statistik. "
+        "Kald først klatrebot_schema for at se tabeller. "
+        "Brug params (?-placeholders) for at undgå SQL-injection ved bruger-input."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "channel_id": {"type": "integer", "description": "Discord channel ID"},
-            "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+            "sql": {"type": "string", "description": "SELECT, WITH, EXPLAIN eller schema-PRAGMA. Andre statements afvises."},
+            "params": {"type": "array", "items": {}, "description": "Positional parameters for ?-placeholders"},
+            "limit": {"type": "integer", "default": 100, "minimum": 1, "maximum": 500},
         },
-        "required": ["channel_id"],
+        "required": ["sql"],
     },
 }
 
-SEARCH_MESSAGES = {
-    "name": "search_messages",
-    "description": (
-        "Keyword-søgning (SQL LIKE) i beskeder. Brug ved konkrete ord. "
-        "Til semantisk/synonym-søgning, brug search_messages_semantic i stedet."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string"},
-            "channel_id": {"type": "integer"},
-            "since": {"type": "string", "description": "ISO 8601 UTC, inclusive"},
-            "until": {"type": "string", "description": "ISO 8601 UTC, exclusive"},
-            "limit": {"type": "integer", "default": 50, "maximum": 500},
-        },
-        "required": ["query"],
-    },
+KLATREBOT_SCHEMA = {
+    "name": "klatrebot_schema",
+    "description": "Hent fuld DDL for alle tabeller, views og indexes i KlatreBots database. Kald før klatrebot_query når du er i tvivl om struktur.",
+    "parameters": {"type": "object", "properties": {}},
 }
 
-SEARCH_MESSAGES_SEMANTIC = {
-    "name": "search_messages_semantic",
+KLATREBOT_SEARCH_SEMANTIC = {
+    "name": "klatrebot_search_semantic",
     "description": (
-        "Semantisk søgning via embeddings — finder beskeder med lignende betydning, "
-        "ikke kun samme ord. Bruges til 'hvornår snakkede vi om X' eller emnesøgning."
+        "Semantisk besked-søgning via embeddings. Finder beskeder med lignende betydning, "
+        "ikke kun samme ord. Bruges til 'hvornår snakkede vi om X', emnesøgning, synonym-tolerance."
     ),
     "parameters": {
         "type": "object",
@@ -54,44 +44,8 @@ SEARCH_MESSAGES_SEMANTIC = {
     },
 }
 
-MESSAGES_IN_WINDOW = {
-    "name": "messages_in_window",
-    "description": "Hent alle beskeder i et tidsvindue [start, end) for en kanal.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "channel_id": {"type": "integer"},
-            "start": {"type": "string", "description": "ISO 8601 UTC, inclusive"},
-            "end": {"type": "string", "description": "ISO 8601 UTC, exclusive"},
-        },
-        "required": ["channel_id", "start", "end"],
-    },
-}
-
-GET_ATTENDANCE = {
-    "name": "get_attendance",
-    "description": (
-        "Optælling af klatretid-fremmøde for en specifik lokal dato. "
-        "Returnerer ja-stemmer og nej-stemmer pr. bruger."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "date_local": {"type": "string", "description": "YYYY-MM-DD i Europe/Copenhagen"},
-            "channel_id": {"type": "integer"},
-        },
-        "required": ["date_local", "channel_id"],
-    },
-}
-
-GET_USER = {
-    "name": "get_user",
-    "description": "Slå brugeroplysninger op via Discord user ID.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "user_id": {"type": "integer"},
-        },
-        "required": ["user_id"],
-    },
+KLATREBOT_HEALTH = {
+    "name": "klatrebot_health",
+    "description": "Tjek om KlatreBot API er nået. Returnerer status + latency.",
+    "parameters": {"type": "object", "properties": {}},
 }

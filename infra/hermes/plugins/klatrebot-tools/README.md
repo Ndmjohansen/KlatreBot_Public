@@ -1,60 +1,45 @@
-# klatrebot-tools — Hermes plugin
+# klatrebot-tools — Hermes plugin (HTTP variant)
 
-Read-only access to KlatreBot's SQLite replica for the Hermes agent.
+Read-only access to KlatreBot's database via the Pi's HTTP API. Hermes never touches the SQLite file directly — Pi is single source of truth, real-time.
 
 ## Install
 
-Copy the whole `klatrebot-tools/` directory to `~/.hermes/plugins/` on the Hermes host:
-
 ```
-~/.hermes/plugins/klatrebot-tools/
-  __init__.py
-  plugin.yaml
-  schemas.py
-  tools.py
-  db.py
-```
-
-Install Python deps in Hermes' venv:
-
-```
-~/.hermes/venv/bin/pip install sqlite-vec openai
+mkdir -p ~/.hermes/plugins
+scp -r klatrebot-tools <USER>@<UBUNTU>:~/.hermes/plugins/
+ssh <USER>@<UBUNTU> "hermes plugins enable klatrebot-tools"
 ```
 
 ## Required env
 
-Set in the env file Hermes loads (e.g. `/etc/klatrebot-hermes.env` or `~/.hermes/.env`):
+Add to Hermes' env file (e.g. `~/.hermes/.env`):
 
 ```
-KLATREBOT_REPLICA_PATH=/var/lib/klatrebot-replica/klatrebot_v2.db
-EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_API_KEY=sk-...
+KLATREBOT_API_URL=http://192.168.50.172:8765
+KLATREBOT_API_TOKEN=<bearer-token-from-pi>
+KLATREBOT_API_TIMEOUT=10
 ```
 
-`OPENAI_API_KEY` is used by `search_messages_semantic` to embed the query (the
-vectors themselves are pre-computed on the Pi/dev box and replicated via Litestream).
+## Tools
 
-## Tools registered
+- `klatrebot_query(sql, params?, limit?)` — arbitrary SELECT/WITH/EXPLAIN. Read-only enforced server-side.
+- `klatrebot_schema()` — DDL for all tables/views/indexes.
+- `klatrebot_search_semantic(query, k?, channel_id?, since?, until?)` — vec0 ANN over message embeddings. Embedding done Pi-side.
+- `klatrebot_health()` — connectivity probe + latency.
 
-- `get_recent_messages(channel_id, limit)`
-- `search_messages(query, channel_id?, since?, until?, limit?)` — keyword LIKE
-- `search_messages_semantic(query, k?, channel_id?, since?, until?)` — vec0 ANN
-- `messages_in_window(channel_id, start, end)`
-- `get_attendance(date_local, channel_id)`
-- `get_user(user_id)`
+All return JSON strings: `{"ok": true, "data": ...}` or `{"ok": false, "error": "..."}`.
 
-All return `{"ok": true, "data": ...}` or `{"ok": false, "error": "..."}` JSON strings.
+## Pi-side server
 
-## Verify
+Lives in `klatrebot_v2/cogs/api.py`. Started inside the bot process on `setup_hook`. Same event loop as Discord client.
 
-After Hermes restart:
+Required Pi env:
 
 ```
-hermes -z "list your klatrebot tools"
+API_ENABLED=true
+API_HOST=0.0.0.0
+API_PORT=8765
+API_TOKEN=<long-random-secret>
 ```
 
-Or invoke directly:
-
-```
-hermes -z "kald search_messages_semantic med query='klatring' og k=3"
-```
+UFW: allow 8765 from Ubuntu LAN IP only.

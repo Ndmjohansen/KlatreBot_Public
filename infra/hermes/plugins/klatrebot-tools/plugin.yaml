@@ -1,10 +1,8 @@
 name: klatrebot-tools
-version: 0.1.0
-description: Read-only access to KlatreBot's SQLite replica — messages, attendance, semantic search.
+version: 0.2.0
+description: Read-only HTTP access to KlatreBots database via the Pi's API. Free-form SQL plus semantic search.
 provides_tools:
-  - get_recent_messages
-  - search_messages
-  - search_messages_semantic
-  - messages_in_window
-  - get_attendance
-  - get_user
+  - klatrebot_query
+  - klatrebot_schema
+  - klatrebot_search_semantic
+  - klatrebot_health

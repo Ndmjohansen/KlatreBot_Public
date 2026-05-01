@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     rate_limit_per_user_per_hour: int = 30
     log_level: str = "INFO"
 
+    # Read-only HTTP API for Hermes
+    api_enabled: bool = False
+    api_host: str = "0.0.0.0"
+    api_port: int = 8765
+    api_token: str = ""
+    api_query_timeout_seconds: float = 5.0
+    api_max_rows: int = 500
+
     # Embeddings
     embedding_model: str = "text-embedding-3-small"
     embeddings_enabled: bool = True
