@@ -31,6 +31,7 @@ class KlatreBot(commands.Bot):
         llm_chat.set_db_conn_provider(lambda: self.db_conn)
         # Register cogs
         await self.load_extension("klatrebot_v2.cogs.api")
+        await self.load_extension("klatrebot_v2.cogs.hermes_health")
         await self.load_extension("klatrebot_v2.cogs.chat")
         await self.load_extension("klatrebot_v2.cogs.auto_responses")
         await self.load_extension("klatrebot_v2.cogs.attendance")
