@@ -60,57 +60,15 @@ def _open_dst(path: str, load_vec: bool) -> sqlite3.Connection:
     return conn
 
 
-_DDL = [
-    """CREATE TABLE IF NOT EXISTS users (
-        discord_user_id  INTEGER PRIMARY KEY,
-        display_name     TEXT NOT NULL,
-        is_admin         INTEGER NOT NULL DEFAULT 0,
-        created_at       TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
-    )""",
-    """CREATE TABLE IF NOT EXISTS messages (
-        discord_message_id  INTEGER PRIMARY KEY,
-        channel_id          INTEGER NOT NULL,
-        user_id             INTEGER NOT NULL,
-        content             TEXT NOT NULL,
-        timestamp_utc       TEXT NOT NULL,
-        is_bot              INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY(user_id) REFERENCES users(discord_user_id)
-    )""",
-    "CREATE INDEX IF NOT EXISTS idx_messages_channel_ts ON messages(channel_id, timestamp_utc)",
-    """CREATE TABLE IF NOT EXISTS attendance_session (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        date_local          TEXT NOT NULL,
-        channel_id          INTEGER NOT NULL,
-        message_id          INTEGER NOT NULL,
-        klatring_start_utc  TEXT NOT NULL,
-        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-        UNIQUE(date_local, channel_id)
-    )""",
-    """CREATE TABLE IF NOT EXISTS attendance_reaction_event (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id      INTEGER NOT NULL,
-        user_id         INTEGER NOT NULL,
-        status          TEXT NOT NULL CHECK(status IN ('yes','no')),
-        timestamp_utc   TEXT NOT NULL,
-        FOREIGN KEY(session_id) REFERENCES attendance_session(id),
-        FOREIGN KEY(user_id) REFERENCES users(discord_user_id)
-    )""",
-    "CREATE INDEX IF NOT EXISTS idx_reaction_session_user_ts ON attendance_reaction_event(session_id, user_id, timestamp_utc)",
-]
-_VEC_DDL = (
-    "CREATE VIRTUAL TABLE IF NOT EXISTS message_embeddings "
-    "USING vec0(message_id INTEGER PRIMARY KEY, embedding FLOAT[1536])"
-)
-
-
 def _bootstrap_schema(dst: sqlite3.Connection, vec_available: bool) -> bool:
-    for stmt in _DDL:
+    """Apply v2 schema. Returns True iff vec0 virtual table was created."""
+    from klatrebot_v2.db.migrations import DDL, VEC_DDL
+    for stmt in DDL:
         dst.execute(stmt)
     has_vec = False
     if vec_available:
         try:
-            dst.execute(_VEC_DDL)
+            dst.execute(VEC_DDL)
             has_vec = True
         except sqlite3.OperationalError as e:
             log.warning("vec0 virtual table creation failed (%s)", e)

@@ -41,13 +41,13 @@ async def insert(
     _schedule_embed(conn, discord_message_id, content)
 
 
+_embed_tasks: set[asyncio.Task] = set()
+
+
 def _schedule_embed(conn: aiosqlite.Connection, message_id: int, content: str) -> None:
     """Fire-and-forget: embed message and upsert vector. Skips silently on any failure."""
-    try:
-        from klatrebot_v2.settings import get_settings
-        if not get_settings().embeddings_enabled:
-            return
-    except Exception:
+    from klatrebot_v2.settings import get_settings
+    if not get_settings().embeddings_enabled:
         return
     if not (content or "").strip():
         return
@@ -55,7 +55,9 @@ def _schedule_embed(conn: aiosqlite.Connection, message_id: int, content: str) -
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
-    loop.create_task(_embed_and_store(conn, message_id, content))
+    task = loop.create_task(_embed_and_store(conn, message_id, content))
+    _embed_tasks.add(task)
+    task.add_done_callback(_embed_tasks.discard)
 
 
 async def _embed_and_store(conn: aiosqlite.Connection, message_id: int, content: str) -> None:

@@ -9,15 +9,6 @@ import aiosqlite
 logger = logging.getLogger(__name__)
 
 
-async def upsert(conn: aiosqlite.Connection, *, message_id: int, vector: list[float]) -> None:
-    """Insert or replace embedding for a message."""
-    await conn.execute(
-        "INSERT OR REPLACE INTO message_embeddings(message_id, embedding) VALUES (?, ?)",
-        (message_id, json.dumps(vector)),
-    )
-    await conn.commit()
-
-
 async def upsert_many(
     conn: aiosqlite.Connection, items: list[tuple[int, list[float]]]
 ) -> None:
@@ -28,6 +19,11 @@ async def upsert_many(
         [(mid, json.dumps(vec)) for mid, vec in items],
     )
     await conn.commit()
+
+
+async def upsert(conn: aiosqlite.Connection, *, message_id: int, vector: list[float]) -> None:
+    """Insert or replace embedding for a single message."""
+    await upsert_many(conn, [(message_id, vector)])
 
 
 async def existing_ids(conn: aiosqlite.Connection, message_ids: list[int]) -> set[int]:

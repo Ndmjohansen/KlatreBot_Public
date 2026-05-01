@@ -142,23 +142,23 @@ async def test_health_disabled_short_circuits(monkeypatch):
     assert ok is False
 
 
-def test_parse_overrides_fast():
-    from klatrebot_v2.cogs.chat import _parse_overrides
-    cleaned, ov = _parse_overrides("--fast hvad så")
+def test_strip_fast_flag_present():
+    from klatrebot_v2.cogs.chat import _strip_fast_flag
+    cleaned, force = _strip_fast_flag("--fast hvad så")
     assert cleaned == "hvad så"
-    assert ov == "chat"
+    assert force is True
 
 
-def test_parse_overrides_agent_flag_not_recognized():
-    """--agent is no longer a flag; !agent is its own command. Flag is treated as part of text."""
-    from klatrebot_v2.cogs.chat import _parse_overrides
-    cleaned, ov = _parse_overrides("hvem klatrede sidst --agent")
+def test_strip_fast_flag_agent_token_left_intact():
+    """--agent is no longer a flag; !agent is its own command. Treated as plain text."""
+    from klatrebot_v2.cogs.chat import _strip_fast_flag
+    cleaned, force = _strip_fast_flag("hvem klatrede sidst --agent")
     assert cleaned == "hvem klatrede sidst --agent"
-    assert ov is None
+    assert force is False
 
 
-def test_parse_overrides_none():
-    from klatrebot_v2.cogs.chat import _parse_overrides
-    cleaned, ov = _parse_overrides("hvad så brormand")
+def test_strip_fast_flag_absent():
+    from klatrebot_v2.cogs.chat import _strip_fast_flag
+    cleaned, force = _strip_fast_flag("hvad så brormand")
     assert cleaned == "hvad så brormand"
-    assert ov is None
+    assert force is False

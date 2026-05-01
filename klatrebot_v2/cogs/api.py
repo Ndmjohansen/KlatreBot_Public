@@ -14,13 +14,13 @@ import json
 import logging
 import re
 import time
+from datetime import datetime
 
 import aiosqlite
-import sqlite_vec
 from aiohttp import web
 from discord.ext import commands
 
-from klatrebot_v2.db import embeddings as emb_db
+from klatrebot_v2.db import connection as db_connection, embeddings as emb_db
 from klatrebot_v2.llm import embeddings as emb_llm
 from klatrebot_v2.settings import get_settings
 
@@ -44,12 +44,7 @@ async def _open_readonly(db_path: str) -> aiosqlite.Connection:
     uri = f"file:{db_path}?mode=ro"
     conn = await aiosqlite.connect(uri, uri=True)
     conn.row_factory = aiosqlite.Row
-    try:
-        await conn.enable_load_extension(True)
-        await conn.load_extension(sqlite_vec.loadable_path())
-        await conn.enable_load_extension(False)
-    except Exception as e:
-        logger.warning("api: sqlite-vec load failed (%s); semantic search disabled", e)
+    await db_connection.load_vec_extension(conn)
     await conn.execute("PRAGMA query_only = 1")
     return conn
 
@@ -175,7 +170,6 @@ class ApiCog(commands.Cog):
             return web.json_response({"error": "empty query embedding"}, status=400)
 
         try:
-            from datetime import datetime
             since_dt = datetime.fromisoformat(since) if since else None
             until_dt = datetime.fromisoformat(until) if until else None
         except ValueError as e:
@@ -193,9 +187,14 @@ class ApiCog(commands.Cog):
             )
         except aiosqlite.Error as e:
             return web.json_response({"error": f"vector search failed: {e}"}, status=500)
-        if not hits:
-            return web.json_response({"matches": []})
 
+        matches = await self._hydrate_hits(hits)
+        return web.json_response({"matches": matches})
+
+    async def _hydrate_hits(self, hits: list[tuple[int, float]]) -> list[dict]:
+        if not hits:
+            return []
+        assert self.ro_conn
         ids = [mid for mid, _ in hits]
         placeholders = ",".join("?" * len(ids))
         cursor = await self.ro_conn.execute(
@@ -214,7 +213,7 @@ class ApiCog(commands.Cog):
             if item:
                 item["distance"] = dist
                 out.append(item)
-        return web.json_response({"matches": out})
+        return out
 
 
 async def setup(bot: commands.Bot) -> None:

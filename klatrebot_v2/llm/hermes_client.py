@@ -8,7 +8,6 @@ Health probe uses plain httpx since OpenAI SDK has no /health helper.
 """
 import asyncio
 import logging
-import time
 
 import httpx
 from openai import AsyncOpenAI, APIError, APITimeoutError
@@ -27,7 +26,6 @@ class HermesUnavailable(Exception):
 
 _client: AsyncOpenAI | None = None
 _available: bool = False
-_last_health_check: float = 0.0
 
 
 def _get_hermes_client() -> AsyncOpenAI:
@@ -54,9 +52,8 @@ def is_available() -> bool:
 
 
 def set_available(value: bool) -> None:
-    global _available, _last_health_check
+    global _available
     _available = value
-    _last_health_check = time.monotonic()
 
 
 async def health() -> bool:
@@ -114,7 +111,6 @@ async def ask(
         set_available(False)
         raise HermesUnavailable(str(e)) from e
 
-    text = ""
     try:
         text = resp.choices[0].message.content or ""
     except (IndexError, AttributeError) as e:
