@@ -24,6 +24,14 @@ class TriviaCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    async def _go_to_bed(self, message: discord.Message) -> None:
+        await asyncio.sleep(60 * 15)
+        if message.guild is None:
+            return
+        member = message.guild.get_member(message.author.id)
+        if member is not None and str(member.status) == "online":
+            await message.channel.send(f"Gå i seng <@{message.author.id}>")
+
     @commands.command(name="ugenr")
     async def ugenr(self, ctx: commands.Context) -> None:
         s = get_settings()
@@ -63,17 +71,16 @@ class TriviaCog(commands.Cog):
         now_local = datetime.now(tz)
         if now_local.hour < 10:
             await ctx.send(f"Det er vist over din sengetid {ctx.author.name}")
+            self.bot.loop.create_task(self._go_to_bed(ctx.message))
             return
         if now_local.weekday() in s.klatretid_days and now_local.hour < s.klatretid_post_hour:
             await ctx.send("Ro på kaptajn, folket er på arbejde")
             return
-        embed = discord.Embed(description="Hva sker der? er i.. er i glar?")
-        embed.set_image(url="https://imgur.com/CnRFnel.gif")
         await ctx.send(
-            content="@everyone",
-            embed=embed,
+            "@everyone Hva sker der? er i.. er i glar?",
             allowed_mentions=discord.AllowedMentions(everyone=True),
         )
+        await ctx.send("https://imgur.com/CnRFnel")
 
 
 async def setup(bot: commands.Bot) -> None:

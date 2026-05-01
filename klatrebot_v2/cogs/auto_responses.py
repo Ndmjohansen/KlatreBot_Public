@@ -91,7 +91,7 @@ RESPONSES: list[AutoResponse] = [
     ),
     AutoResponse(
         name="downus",
-        pattern=re.compile(r"!downus|fail", re.I),
+        pattern=re.compile(r"^!downus|fail", re.I),
         handler=lambda m: _static(
             "https://cdn.discordapp.com/attachments/1003718776430268588/1153668006728192101/downus_on_wall.gif"
         ),
@@ -133,6 +133,10 @@ def first_match(text: str) -> AutoResponse | None:
     return None
 
 
+def matching_responses(text: str) -> list[AutoResponse]:
+    return [ar for ar in RESPONSES if ar.pattern.search(text)]
+
+
 # ─── Cog ─────────────────────────────────────────────────────────────────────
 
 
@@ -142,9 +146,6 @@ class AutoResponsesCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        if message.author.bot:
-            return
-
         await users_db.upsert(
             self.bot.db_conn,
             discord_user_id=message.author.id,
@@ -157,12 +158,13 @@ class AutoResponsesCog(commands.Cog):
             user_id=message.author.id,
             content=message.content,
             timestamp_utc=message.created_at.replace(tzinfo=timezone.utc) if message.created_at.tzinfo is None else message.created_at,
-            is_bot=False,
+            is_bot=message.author.bot,
         )
 
-        for ar in RESPONSES:
-            if not ar.pattern.search(message.content):
-                continue
+        if message.author.bot:
+            return
+
+        for ar in matching_responses(message.content):
             try:
                 reply = await ar.handler(message)
             except Exception:
@@ -171,7 +173,6 @@ class AutoResponsesCog(commands.Cog):
             if reply:
                 logger.info("auto_response.fired name=%s", ar.name)
                 await message.channel.send(reply)
-                break
 
 
 def _display_name(member) -> str:

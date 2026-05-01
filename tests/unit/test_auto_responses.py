@@ -1,11 +1,17 @@
 def test_first_match_wins_and_patterns_compile():
-    from klatrebot_v2.cogs.auto_responses import RESPONSES, first_match
+    from klatrebot_v2.cogs.auto_responses import RESPONSES, first_match, matching_responses
 
     for ar in RESPONSES:
         assert ar.pattern.search("just any string here") is None or hasattr(ar.pattern, "search")
 
     m = first_match("Det her var bare en fail tbh")
     assert m is not None and m.name == "downus"
+
+    assert first_match("foo !downus") is None
+    assert [m.name for m in matching_responses("klatrebot fail?")] == [
+        "downus",
+        "klatrebot_question",
+    ]
 
     m = first_match("https://www.ekstrabladet.dk/blah")
     assert m is not None and m.name == "ekstrabladet"
