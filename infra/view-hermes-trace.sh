@@ -6,21 +6,26 @@
 # arguments, TOOL_RESULTs (truncated), and the final ASSISTANT reply.
 #
 # Usage:
-#   ./view-hermes-trace.sh           # last 1 session (most recent)
-#   ./view-hermes-trace.sh 5         # last 5 sessions
-#   ./view-hermes-trace.sh 1 -v      # full tool result bodies, no truncation
+#   ./view-hermes-trace.sh                     # last 1 session, truncated (~400 chars per chunk)
+#   ./view-hermes-trace.sh 5                   # last 5 sessions, truncated
+#   ./view-hermes-trace.sh --full              # last 1, no truncation
+#   ./view-hermes-trace.sh 5 --full            # last 5, no truncation
+#   ./view-hermes-trace.sh 1 -v                # alias for --full
 #
-# Pipe into less: ./view-hermes-trace.sh 10 | less -R
+# Pipe into less: ./view-hermes-trace.sh 10 --full | less -R
 
 set -u
 
-N="${1:-1}"
 VERBOSE=""
+N=""
 for arg in "$@"; do
     case "$arg" in
-        -v|--verbose) VERBOSE=1 ;;
+        -v|--verbose|--full) VERBOSE=1 ;;
+        ''|*[!0-9]*) ;;  # skip non-numeric (handled above)
+        *) N="$arg" ;;   # first numeric arg = session count
     esac
 done
+N="${N:-1}"
 
 SESS_DIR="$HOME/.hermes/sessions"
 if [[ ! -d "$SESS_DIR" ]]; then
