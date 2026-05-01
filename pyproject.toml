@@ -1,0 +1,35 @@
+[project]
+name = "klatrebot-v2"
+version = "0.1.0"
+description = "KlatreBot V2 — Phase 1 lean rewrite"
+authors = [{ name = "Nicklas Johansen" }]
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "discord.py>=2.7",
+    "openai>=2.6.1",
+    "aiosqlite>=0.21",
+    "pydantic==2.13.3",
+    "pydantic-settings>=2.5",
+    "python-dateutil>=2.9",
+    "pytz>=2024.1",
+    "requests>=2.32",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+pytest-asyncio = ">=0.24"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "integration: end-to-end tests that boot the bot subprocess (opt-in via -m integration)",
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
