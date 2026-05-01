@@ -19,7 +19,9 @@ jobs:
           script: |
             set -e
             cd ~/KlatreBot/KlatreBot_Public/
-            git pull
+            git fetch origin main
+            git checkout main || git checkout -b main origin/main
+            git pull --ff-only origin main
 
             poetry install --sync --no-interaction
 
@@ -38,9 +40,14 @@ jobs:
             # Ensure DB data dir exists (idempotent)
             sudo install -d -o Admin -g Admin -m 755 /home/Admin/klatrebot-data
 
-            # Patch @POETRY_DIR@ sentinel in the unit file with dirname of `poetry`
+            # Patch deployment sentinels in the unit file.
             POETRY_DIR="$(dirname "$(command -v poetry)")"
-            sed "s|@POETRY_DIR@|${POETRY_DIR}|g" klatrebot.service \
+            sed \
+              -e "s|@SERVICE_USER@|Admin|g" \
+              -e "s|@PROJECT_DIR@|/home/Admin/KlatreBot/KlatreBot_Public|g" \
+              -e "s|@DATA_DIR@|/home/Admin/klatrebot-data|g" \
+              -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
+              klatrebot.service \
               | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot.service
 
             sudo systemctl daemon-reload

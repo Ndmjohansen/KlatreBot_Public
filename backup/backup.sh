@@ -8,7 +8,7 @@ set -euo pipefail
 #   args: DB_PATH RCLONE_REMOTE
 #
 # Example cron (every day at 03:00):
-#   0 3 * * * /home/Admin/KlatreBot/KlatreBot_Public/backup/backup.sh \
+#   0 3 * * * bash /home/Admin/KlatreBot/KlatreBot_Public/backup/backup.sh \
 #     /home/Admin/klatrebot-data/klatrebot_v2.db gdrive
 
 DB_PATH=${1:-/home/Admin/klatrebot-data/klatrebot_v2.db}

@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=Admin
-Group=Admin
-WorkingDirectory=/home/Admin/KlatreBot/KlatreBot_Public
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@PROJECT_DIR@
 EnvironmentFile=/etc/klatrebot/klatrebot.env
 # Deploy step rewrites @POETRY_DIR@ with `dirname $(command -v poetry)` so systemd can find poetry.
 Environment=PATH=@POETRY_DIR@:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -23,7 +23,7 @@ SyslogIdentifier=klatrebot
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/home/Admin/KlatreBot/KlatreBot_Public /home/Admin/klatrebot-data /home/Admin/.cache/pypoetry /home/Admin/.config/pypoetry
+ReadWritePaths=@PROJECT_DIR@ @DATA_DIR@ /home/@SERVICE_USER@/.cache/pypoetry /home/@SERVICE_USER@/.config/pypoetry
 
 # Resource limits
 LimitNOFILE=65536
