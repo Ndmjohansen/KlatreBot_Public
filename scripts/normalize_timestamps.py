@@ -22,7 +22,7 @@ NOT touched:
 Idempotent: rows already in canonical form are skipped (no-op UPDATE).
 
 Usage:
-    poetry run python tools/normalize_timestamps.py --db ./klatrebot_v2.db [--dry-run] [-v]
+    poetry run python scripts/normalize_timestamps.py --db ./klatrebot_v2.db [--dry-run] [-v]
 """
 from __future__ import annotations
 
