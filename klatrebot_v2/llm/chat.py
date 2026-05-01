@@ -7,14 +7,26 @@ from pydantic import BaseModel
 _MENTION_RE = re.compile(r"<@!?(\d+)>")
 
 
-def _sanitize_mentions(text: str) -> str:
-    """Insert zero-width space inside Discord mentions to prevent unintended pings."""
-    return _MENTION_RE.sub(lambda m: f"<@​{m.group(1)}>", text)
+def _resolve_mentions(text: str, names: dict[int, str]) -> str:
+    def sub(m: re.Match) -> str:
+        uid = int(m.group(1))
+        name = names.get(uid)
+        return f"@{name}" if name else m.group(0)
+    return _MENTION_RE.sub(sub, text)
 
 from klatrebot_v2.settings import get_settings
 from klatrebot_v2.llm.client import get_client
 from klatrebot_v2.llm.prompt import load_soul
-from klatrebot_v2.db import messages as msg_db
+from klatrebot_v2.db import messages as msg_db, users as users_db
+
+
+async def _names_for_ids(conn, ids: set[int]) -> dict[int, str]:
+    out: dict[int, str] = {}
+    for uid in ids:
+        u = await users_db.get(conn, uid)
+        if u:
+            out[uid] = u.display_name
+    return out
 
 
 class ChatReply(BaseModel):
@@ -44,7 +56,13 @@ def set_db_conn_provider(provider: Callable) -> None:
     _get_db_conn = provider
 
 
-async def reply(*, question: str, asking_user_id: int, channel_id: int) -> ChatReply:
+async def reply(
+    *,
+    question: str,
+    asking_user_id: int,
+    channel_id: int,
+    mentions: dict[int, str] | None = None,
+) -> ChatReply:
     if _get_db_conn is None:
         raise RuntimeError("chat.reply called before db conn provider was set")
     conn = _get_db_conn()
@@ -52,13 +70,32 @@ async def reply(*, question: str, asking_user_id: int, channel_id: int) -> ChatR
     soul = load_soul()
 
     recent = await msg_db.recent_with_authors(conn, channel_id=channel_id, limit=s.gpt_recent_message_count)
-    context_block = "\n".join(f"{m.user_display_name}: {m.content}" for m in recent)
+
+    history_ids: set[int] = set()
+    for m in recent:
+        history_ids.update(int(x) for x in _MENTION_RE.findall(m.content))
+    question_ids = {int(x) for x in _MENTION_RE.findall(question)}
+    names: dict[int, str] = dict(mentions or {})
+    missing = (history_ids | question_ids) - names.keys()
+    if missing:
+        names.update(await _names_for_ids(conn, missing))
+
+    context_block = "\n".join(
+        f"{m.user_display_name}: {_resolve_mentions(m.content, names)}" for m in recent
+    )
+    resolved_question = _resolve_mentions(question, names)
+    mention_tokens = (
+        "\n".join(f"@{n} -> <@{uid}>" for uid, n in names.items())
+        if names
+        else "(none)"
+    )
 
     full_input = (
         f"{soul}\n\n"
         f"CONTEXT (recent chat):\n{context_block}\n\n"
         f"Asking user Discord ID: {asking_user_id}\n\n"
-        f"QUESTION: {question}"
+        f"MENTION_TOKENS (use exact token to ping a user):\n{mention_tokens}\n\n"
+        f"QUESTION: {resolved_question}"
     )
     client = get_client()
     resp = await client.responses.create(
@@ -69,7 +106,7 @@ async def reply(*, question: str, asking_user_id: int, channel_id: int) -> ChatR
         text={"verbosity": "medium"},
         include=["web_search_call.action.sources"],
     )
-    return ChatReply(text=_sanitize_mentions(resp.output_text or ""), sources=_extract_sources(resp))
+    return ChatReply(text=resp.output_text or "", sources=_extract_sources(resp))
 
 
 _SUMMARY_INSTRUCTIONS = """
@@ -98,4 +135,4 @@ async def summarize(msgs) -> str:
         reasoning={"effort": "medium"},
         text={"verbosity": "medium"},
     )
-    return _sanitize_mentions(resp.output_text or "")
+    return resp.output_text or ""
