@@ -1,0 +1,10 @@
+name: klatrebot-tools
+version: 0.1.0
+description: Read-only access to KlatreBot's SQLite replica — messages, attendance, semantic search.
+provides_tools:
+  - get_recent_messages
+  - search_messages
+  - search_messages_semantic
+  - messages_in_window
+  - get_attendance
+  - get_user

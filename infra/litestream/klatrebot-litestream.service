@@ -1,0 +1,13 @@
+[Unit]
+Description=Litestream replication for KlatreBot SQLite DB
+After=network-online.target klatrebot.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/litestream replicate -config /etc/litestream.yml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -50,7 +50,18 @@ _DDL = [
 ]
 
 
+_VEC_DDL = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS message_embeddings "
+    "USING vec0(message_id INTEGER PRIMARY KEY, embedding FLOAT[1536])"
+)
+
+
 async def run(conn: aiosqlite.Connection) -> None:
     for stmt in _DDL:
         await conn.execute(stmt)
+    try:
+        await conn.execute(_VEC_DDL)
+    except aiosqlite.OperationalError:
+        # vec0 extension not loaded; semantic search unavailable but other tables still usable
+        pass
     await conn.commit()

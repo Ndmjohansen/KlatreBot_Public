@@ -14,3 +14,5 @@ tests/__pycache__/*
 backup/data_cleanup/*
 .worktrees/
 docs/superpowers/
+infra/litestream/bin/
+infra/litestream/litestream-windows.local.yml

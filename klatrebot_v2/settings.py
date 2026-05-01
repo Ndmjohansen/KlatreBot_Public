@@ -32,6 +32,19 @@ class Settings(BaseSettings):
     rate_limit_per_user_per_hour: int = 30
     log_level: str = "INFO"
 
+    # Embeddings
+    embedding_model: str = "text-embedding-3-small"
+    embeddings_enabled: bool = True
+
+    # Router + Hermes
+    classifier_model: str = "gpt-5.4-nano"
+    classifier_timeout_seconds: float = 1.5
+    hermes_enabled: bool = False
+    hermes_url: str = "http://localhost:8642"
+    hermes_token: str = ""
+    hermes_model: str = "hermes-agent"
+    hermes_timeout_seconds: float = 25.0
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

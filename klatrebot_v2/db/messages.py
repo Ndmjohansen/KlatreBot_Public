@@ -1,9 +1,15 @@
 """Message log queries."""
+import asyncio
+import logging
 from datetime import datetime
+
 import aiosqlite
 from pydantic import BaseModel
 
 from klatrebot_v2.db.models import Message
+
+
+logger = logging.getLogger(__name__)
 
 
 async def insert(
@@ -32,6 +38,36 @@ async def insert(
         ),
     )
     await conn.commit()
+    _schedule_embed(conn, discord_message_id, content)
+
+
+def _schedule_embed(conn: aiosqlite.Connection, message_id: int, content: str) -> None:
+    """Fire-and-forget: embed message and upsert vector. Skips silently on any failure."""
+    try:
+        from klatrebot_v2.settings import get_settings
+        if not get_settings().embeddings_enabled:
+            return
+    except Exception:
+        return
+    if not (content or "").strip():
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(_embed_and_store(conn, message_id, content))
+
+
+async def _embed_and_store(conn: aiosqlite.Connection, message_id: int, content: str) -> None:
+    try:
+        from klatrebot_v2.llm import embeddings as emb_llm
+        from klatrebot_v2.db import embeddings as emb_db
+        vectors = await emb_llm.embed([content])
+        if not vectors or vectors[0] is None:
+            return
+        await emb_db.upsert(conn, message_id=message_id, vector=vectors[0])
+    except Exception as e:
+        logger.warning("embed-on-insert failed for message_id=%d: %s", message_id, e)
 
 
 async def recent(conn: aiosqlite.Connection, *, channel_id: int, limit: int) -> list[Message]:
