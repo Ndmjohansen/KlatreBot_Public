@@ -1,52 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Minimal rclone-based backup script for headless systems
-# Usage: backup.sh /path/to/repo gdrive
-#   args: REPO_DIR RCLONE_REMOTE
+# rclone-based backup for KlatreBot V2 sqlite db.
+# Uses `sqlite3 .backup` for an atomic snapshot — safe with WAL, no service stop required.
+#
+# Usage: backup.sh /path/to/klatrebot_v2.db gdrive
+#   args: DB_PATH RCLONE_REMOTE
+#
+# Example cron (every day at 03:00):
+#   0 3 * * * bash /home/Admin/KlatreBot/KlatreBot_Public/backup/backup.sh \
+#     /home/Admin/klatrebot-data/klatrebot_v2.db gdrive
 
-REPO_DIR=${1:-.}
+DB_PATH=${1:-/home/Admin/klatrebot-data/klatrebot_v2.db}
 RCLONE_REMOTE=${2:-gdrive}
 
-# Adjust these as needed
 TMPDIR=${TMPDIR:-/tmp}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-ZIPNAME="KlatreBot_Backup_${TIMESTAMP}.zip"
+SNAPSHOT="${TMPDIR}/klatrebot_v2_${TIMESTAMP}.db"
+ZIPNAME="KlatreBot_v2_Backup_${TIMESTAMP}.zip"
 ZIPPATH="${TMPDIR}/${ZIPNAME}"
-LOG_FILE="${REPO_DIR}/backup/backup.log"
-
-# Optional service commands (comment out if not used)
-SHUTDOWN_CMD="sudo systemctl stop klatrebot.service" 
-RESTART_CMD="sudo systemctl start klatrebot.service"
+LOG_FILE="$(dirname "$(readlink -f "$0")")/backup.log"
 
 mkdir -p "$(dirname "${LOG_FILE}")"
 exec > >(tee -a "${LOG_FILE}") 2>&1
 
 cleanup() {
-    exit_code=$?
-    echo "Restarting KlatreBot (exit code: ${exit_code})" || true
-    eval ${RESTART_CMD} || true
-    exit ${exit_code}
+    rm -f "${SNAPSHOT}" "${ZIPPATH}"
 }
-
 trap cleanup EXIT
 
-echo "Stopping KlatreBot (if running)" || true
-eval ${SHUTDOWN_CMD} || true
+echo "[$(date -Is)] Starting backup of ${DB_PATH}"
 
-echo "Creating archive ${ZIPPATH}"
-cd "${REPO_DIR}"
-zip -r -q "${ZIPPATH}" klatrebot.db chroma_db/
+echo "Snapshotting via sqlite3 .backup → ${SNAPSHOT}"
+sqlite3 "${DB_PATH}" ".backup '${SNAPSHOT}'"
 
-echo "Uploading ${ZIPPATH} to ${RCLONE_REMOTE}:KlatreBot_Backups/${TIMESTAMP}/"
-rclone copy "${ZIPPATH}" "${RCLONE_REMOTE}:KlatreBot_Backups/${TIMESTAMP}/" -P
+echo "Compressing snapshot → ${ZIPPATH}"
+( cd "${TMPDIR}" && zip -q "${ZIPNAME}" "$(basename "${SNAPSHOT}")" )
 
-echo "Cleaning up local backups older than 2 days"
-find "${TMPDIR}" -maxdepth 1 -type f -name "KlatreBot_Backup_*.zip" -mtime +2 -print -delete
+echo "Uploading to ${RCLONE_REMOTE}:KlatreBot_v2_Backups/${TIMESTAMP}/"
+rclone copy "${ZIPPATH}" "${RCLONE_REMOTE}:KlatreBot_v2_Backups/${TIMESTAMP}/" -P
 
-echo "Restarting KlatreBot" || true
-eval ${RESTART_CMD} || true
+echo "Cleaning up local snapshots older than 2 days"
+find "${TMPDIR}" -maxdepth 1 -type f -name "KlatreBot_v2_Backup_*.zip" -mtime +2 -print -delete
 
-echo "Done"
-
-
+echo "[$(date -Is)] Backup complete"

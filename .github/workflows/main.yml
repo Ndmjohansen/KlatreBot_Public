@@ -1,15 +1,15 @@
-name: Remote SSH
+name: Deploy
 on:
   push:
     branches: ["main"]
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Build
+  deploy:
+    name: Deploy klatrebot to Pi
     runs-on: ubuntu-latest
     steps:
-      - name: executing remote ssh commands using ssh key
+      - name: SSH deploy
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SSH_IP }}
@@ -17,19 +17,39 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
+            set -e
             cd ~/KlatreBot/KlatreBot_Public/
-            git pull
-            source .venv/bin/activate
-            pip install --upgrade -r requirements.txt
-            
-            # Update .env file with secrets
-            tee .env > /dev/null <<EOF
-            discordkey=${{ secrets.BOT_KEY}}
-            openaikey=${{ secrets.OPENAI_API}}
+            git fetch origin main
+            git checkout main || git checkout -b main origin/main
+            git pull --ff-only origin main
+
+            poetry install --sync --no-interaction
+
+            # Atomic write of systemd EnvironmentFile (mode 600 from creation;
+            # quoted heredoc prevents shell expansion of $/`).
+            sudo install -d -m 755 /etc/klatrebot
+            sudo install -m 600 -o root -g root /dev/stdin /etc/klatrebot/klatrebot.env <<'EOF'
+            DISCORD_KEY=${{ secrets.BOT_KEY }}
+            OPENAI_KEY=${{ secrets.OPENAI_API }}
+            DISCORD_MAIN_CHANNEL_ID=${{ secrets.DISCORD_MAIN_CHANNEL_ID }}
+            DISCORD_SANDBOX_CHANNEL_ID=${{ secrets.DISCORD_SANDBOX_CHANNEL_ID }}
+            ADMIN_USER_ID=${{ secrets.ADMIN_USER_ID }}
+            DB_PATH=/home/Admin/klatrebot-data/klatrebot_v2.db
             EOF
-            
-            # Update service file and restart
-            sudo cp klatrebot.service /etc/systemd/system/klatrebot.service
+
+            # Ensure DB data dir exists (idempotent)
+            sudo install -d -o Admin -g Admin -m 755 /home/Admin/klatrebot-data
+
+            # Patch deployment sentinels in the unit file.
+            POETRY_DIR="$(dirname "$(command -v poetry)")"
+            sed \
+              -e "s|@SERVICE_USER@|Admin|g" \
+              -e "s|@PROJECT_DIR@|/home/Admin/KlatreBot/KlatreBot_Public|g" \
+              -e "s|@DATA_DIR@|/home/Admin/klatrebot-data|g" \
+              -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
+              klatrebot.service \
+              | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot.service
+
             sudo systemctl daemon-reload
             sudo systemctl restart klatrebot
-            sudo systemctl status klatrebot
+            sudo systemctl status klatrebot --no-pager

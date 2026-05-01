@@ -5,12 +5,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=Admin
-Group=Admin
-WorkingDirectory=/home/Admin/KlatreBot/KlatreBot_Public
-Environment=PATH=/home/Admin/KlatreBot/KlatreBot_Public/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-Environment=PYTHONPATH=/home/Admin/KlatreBot/KlatreBot_Public/.venv/lib/python3.11/site-packages
-ExecStart=/usr/bin/python3 /home/Admin/KlatreBot/KlatreBot_Public/KlatreBot.py
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@PROJECT_DIR@
+EnvironmentFile=/etc/klatrebot/klatrebot.env
+# Deploy step rewrites @POETRY_DIR@ with `dirname $(command -v poetry)` so systemd can find poetry.
+Environment=PATH=@POETRY_DIR@:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/env poetry run python3 -m klatrebot_v2
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
@@ -18,11 +19,11 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=klatrebot
 
-# Security settings
+# Security
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/home/Admin/KlatreBot/KlatreBot_Public
+ReadWritePaths=@PROJECT_DIR@ @DATA_DIR@ /home/@SERVICE_USER@/.cache/pypoetry /home/@SERVICE_USER@/.config/pypoetry
 
 # Resource limits
 LimitNOFILE=65536
