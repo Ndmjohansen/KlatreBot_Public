@@ -32,6 +32,11 @@ pythonpath = ["."]
 markers = [
     "integration: end-to-end tests that boot the bot subprocess (opt-in via -m integration)",
 ]
+filterwarnings = [
+    # discord.py 2.7.1 still does `import audioop` in player.py; harmless
+    # (audioop-lts shadows on 3.13+). Drop when upstream fixes.
+    "ignore:'audioop' is deprecated:DeprecationWarning",
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]
