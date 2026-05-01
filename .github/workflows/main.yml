@@ -52,6 +52,10 @@ jobs:
 
             # Ensure DB data dir exists (idempotent)
             sudo install -d -o Admin -g Admin -m 755 /home/Admin/klatrebot-data
+            sudo install -d -o Admin -g Admin -m 755 \
+              /home/Admin/.cache/pypoetry \
+              /home/Admin/.config/pypoetry \
+              /home/Admin/.local/share/pypoetry
 
             # Patch deployment sentinels in the unit file.
             POETRY_DIR="$(dirname "$POETRY_BIN")"

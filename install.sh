@@ -50,6 +50,10 @@ sudo -H -u "$TARGET_USER" bash -lc \
 
 echo "[2/6] Creating data dir $DATA_DIR"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DATA_DIR"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+    "/home/${TARGET_USER}/.cache/pypoetry" \
+    "/home/${TARGET_USER}/.config/pypoetry" \
+    "/home/${TARGET_USER}/.local/share/pypoetry"
 
 echo "[3/6] Ensuring env file $ENV_FILE"
 install -d -m 755 "$ENV_DIR"
