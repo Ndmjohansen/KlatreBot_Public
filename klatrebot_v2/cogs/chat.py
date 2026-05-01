@@ -23,10 +23,12 @@ class ChatCog(commands.Cog):
             return
         start = time.monotonic()
         async with ctx.typing():
+            mentions = {u.id: u.display_name for u in ctx.message.mentions}
             result = await chat.reply(
                 question=question,
                 asking_user_id=ctx.author.id,
                 channel_id=ctx.channel.id,
+                mentions=mentions,
             )
         elapsed = time.monotonic() - start
         logger.info("llm.reply duration=%.2fs", elapsed)
@@ -34,7 +36,12 @@ class ChatCog(commands.Cog):
         text = result.text
         if result.sources:
             text += f"\n\n_Kilder: {', '.join(result.sources[:3])}_"
-        await ctx.reply(text)
+        await ctx.reply(
+            text,
+            allowed_mentions=discord.AllowedMentions(
+                users=True, everyone=False, roles=False, replied_user=True
+            ),
+        )
 
 
 async def setup(bot: commands.Bot) -> None:
