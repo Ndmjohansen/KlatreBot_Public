@@ -1,7 +1,5 @@
 # KlatreBot V2
 
-Lean rewrite. Spec: [`docs/superpowers/specs/2026-04-30-klatrebot-v2-design.md`](docs/superpowers/specs/2026-04-30-klatrebot-v2-design.md)
-
 V1 archived under `klatrebot_v1/` — kept for reference, not deployed.
 
 ## Run locally
