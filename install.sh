@@ -9,7 +9,7 @@ SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 ENV_DIR="/etc/klatrebot"
 ENV_FILE="${ENV_DIR}/klatrebot.env"
 CRON_FILE="/etc/cron.d/klatrebot-backup"
-RCLONE_REMOTE="${RCLONE_REMOTE:-gdrive}"
+RCLONE_REMOTE="${RCLONE_REMOTE:-GDrive}"
 
 if [ "$EUID" -ne 0 ]; then
     echo "Run as root or with sudo" >&2
