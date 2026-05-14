@@ -24,6 +24,7 @@ class AutoResponse:
     name: str
     pattern: re.Pattern
     handler: Callable[[discord.Message], Awaitable[str | None]]
+    cooldown_seconds: int = 0
 
 
 _SVAR = [
@@ -95,6 +96,7 @@ RESPONSES: list[AutoResponse] = [
         handler=lambda m: _static(
             "https://cdn.discordapp.com/attachments/1003718776430268588/1153668006728192101/downus_on_wall.gif"
         ),
+        cooldown_seconds=120,
     ),
     AutoResponse(
         name="klatrebot_question",
@@ -107,11 +109,13 @@ RESPONSES: list[AutoResponse] = [
         handler=lambda m: _static(
             "https://cdn.discordapp.com/attachments/1049312345068933134/1049363489354952764/pellememetekst.gif"
         ),
+        cooldown_seconds=120,
     ),
     AutoResponse(
         name="elmo",
         pattern=re.compile(r"\b(elmo|elon)\b", re.I),
         handler=lambda m: _static("https://imgur.com/LNVCB8g"),
+        cooldown_seconds=120,
     ),
     AutoResponse(
         name="ekstrabladet",
@@ -122,6 +126,7 @@ RESPONSES: list[AutoResponse] = [
         name="glar_midsentence",
         pattern=re.compile(r"(?<=.)!glar", re.I),
         handler=lambda m: _static("https://imgur.com/CnRFnel"),
+        cooldown_seconds=120,
     ),
 ]
 
@@ -143,6 +148,19 @@ def matching_responses(text: str) -> list[AutoResponse]:
 class AutoResponsesCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self._cooldown_until_by_response: dict[str, datetime] = {}
+
+    def _is_on_cooldown(self, response: AutoResponse, now: datetime) -> bool:
+        if response.cooldown_seconds <= 0:
+            return False
+        expires_at = self._cooldown_until_by_response.get(response.name)
+        return expires_at is not None and now < expires_at
+
+    def _mark_cooldown(self, response: AutoResponse, now: datetime) -> None:
+        if response.cooldown_seconds > 0:
+            self._cooldown_until_by_response[response.name] = (
+                now + timedelta(seconds=response.cooldown_seconds)
+            )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -165,6 +183,10 @@ class AutoResponsesCog(commands.Cog):
             return
 
         for ar in matching_responses(message.content):
+            now = datetime.now(timezone.utc)
+            if self._is_on_cooldown(ar, now):
+                logger.info("auto_response.cooldown_skip name=%s", ar.name)
+                continue
             try:
                 reply = await ar.handler(message)
             except Exception:
@@ -173,6 +195,7 @@ class AutoResponsesCog(commands.Cog):
             if reply:
                 logger.info("auto_response.fired name=%s", ar.name)
                 await message.channel.send(reply)
+                self._mark_cooldown(ar, now)
 
 
 def _display_name(member) -> str:

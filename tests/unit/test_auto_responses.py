@@ -34,6 +34,26 @@ def test_uge_pattern_requires_word_boundary():
 import pytest
 
 
+def test_reaction_gifs_have_individual_two_minute_cooldowns():
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import MagicMock
+
+    from klatrebot_v2.cogs.auto_responses import AutoResponsesCog, RESPONSES
+
+    responses = {ar.name: ar for ar in RESPONSES}
+    for name in ["downus", "det_kan_man_ik", "elmo", "glar_midsentence"]:
+        assert responses[name].cooldown_seconds == 120
+
+    cog = AutoResponsesCog(MagicMock())
+    now = datetime(2026, 5, 7, 12, 0, tzinfo=timezone.utc)
+
+    cog._mark_cooldown(responses["elmo"], now)
+
+    assert cog._is_on_cooldown(responses["elmo"], now + timedelta(seconds=119))
+    assert not cog._is_on_cooldown(responses["downus"], now + timedelta(seconds=119))
+    assert not cog._is_on_cooldown(responses["elmo"], now + timedelta(seconds=120))
+
+
 @pytest.mark.asyncio
 async def test_handle_uge_returns_date_range():
     from unittest.mock import MagicMock
