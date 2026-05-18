@@ -143,6 +143,37 @@ async def test_reply_executes_memory_tool_when_enabled(monkeypatch, tmp_path, db
     ]
 
 
+async def test_reply_includes_known_user_aliases_when_memory_enabled(monkeypatch, tmp_path, db):
+    soul = tmp_path / "SOUL.MD"
+    soul.write_text("Soul.")
+    monkeypatch.setenv("DISCORD_KEY", "x"); monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1"); monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3"); monkeypatch.setenv("SOUL_PATH", str(soul))
+    monkeypatch.setenv("MEMORY_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ACTIVE_RUN_ID", "7")
+
+    from klatrebot_v2.db import user_aliases
+    await user_aliases.upsert_alias(db, discord_user_id=42, alias="Tobi", source="config")
+    await user_aliases.upsert_alias(db, discord_user_id=42, alias="Tobias", source="config")
+
+    from klatrebot_v2.llm import chat, client, prompt
+    from klatrebot_v2.settings import get_settings
+    client._client = None
+    prompt.load_soul.cache_clear()
+    get_settings.cache_clear()
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(return_value=MagicMock(output_text="ok", output=[]))
+    monkeypatch.setattr(client, "_client", fake_client)
+    monkeypatch.setattr(chat, "_get_db_conn", lambda: db)
+
+    await chat.reply(question="hvad med Tobi?", asking_user_id=99, channel_id=42)
+
+    call_kwargs = fake_client.responses.create.await_args.kwargs
+    assert "KNOWN_USER_ALIASES:" in call_kwargs["input"]
+    assert "Tobi / Tobias -> 42" in call_kwargs["input"]
+
+
 async def test_reply_executes_multiple_memory_tool_rounds(monkeypatch, tmp_path, db):
     soul = tmp_path / "SOUL.MD"
     soul.write_text("Soul.")

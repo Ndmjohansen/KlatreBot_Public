@@ -4,6 +4,8 @@ __pycache__/*
 .vscode/*
 .venv/*
 .env
+local_user_aliases.json
+user_aliases.json
 daily_message_log.json
 *.db*
 debug/

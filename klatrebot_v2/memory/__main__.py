@@ -4,7 +4,7 @@ import asyncio
 import json
 from datetime import datetime
 
-from klatrebot_v2.db import connection, migrations
+from klatrebot_v2.db import connection, migrations, user_aliases
 from klatrebot_v2.llm.client import get_client
 from klatrebot_v2.llm.prompt import load_soul
 from klatrebot_v2.memory.compiler import CompilerConfig, compile_run
@@ -38,12 +38,16 @@ async def chat_once(
     recent_limit: int = 0,
 ) -> str:
     s = get_settings()
+    effective_channel_id = channel_id or s.discord_main_channel_id
+    alias_map = await user_aliases.format_alias_prompt_map(conn)
     client = get_client()
     prompt = (
         f"{load_soul()}\n\n"
         "Du kører i offline memory-test. Brug memory tools ved historiske spørgsmål. "
-        "Vis ikke kilder medmindre brugeren spørger.\n\n"
-        f"CHANNEL_ID: {channel_id or '(none)'}\n"
+        "Vis ikke kilder medmindre brugeren spørger. "
+        "Når et spørgsmål nævner personer, brug people_names i memory tool-kaldet.\n\n"
+        f"CHANNEL_ID: {effective_channel_id}\n"
+        f"KNOWN_USER_ALIASES:\n{alias_map}\n"
         f"RECENT_LIMIT: {recent_limit}\n"
         f"RECENT CLI CHAT:\n{_format_recent_context(recent_context)}\n\n"
         f"QUESTION: {question}"
@@ -62,11 +66,14 @@ async def chat_once(
         tool_outputs = []
         debug_outputs = []
         for call in _extract_function_calls(resp):
+            arguments = dict(call["arguments"])
+            if call["name"] == "recall_community_memory" and "channel_id" not in arguments:
+                arguments["channel_id"] = effective_channel_id
             output = await execute_memory_tool(
                 conn,
                 run_id=run_id,
                 name=call["name"],
-                arguments=call["arguments"],
+                arguments=arguments,
             )
             debug_outputs.append((call["name"], output))
             tool_outputs.append(
@@ -133,6 +140,7 @@ async def _compile(args) -> int:
     conn = await connection.open(args.db)
     try:
         await migrations.run(conn)
+        await user_aliases.sync_config_aliases(conn, get_settings().user_aliases_config_path)
         existing = await get_compiler_run_by_name(conn, args.name)
         if existing and not args.yes:
             answer = input(f"Memory run '{args.name}' exists. Overwrite? [y/N] ").strip().lower()
@@ -163,6 +171,7 @@ async def _chat(args) -> int:
     conn = await connection.open(args.db)
     try:
         await migrations.run(conn)
+        await user_aliases.sync_config_aliases(conn, get_settings().user_aliases_config_path)
         recent_context: list[str] = []
         while True:
             try:

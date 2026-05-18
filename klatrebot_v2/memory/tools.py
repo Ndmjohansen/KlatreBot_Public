@@ -5,6 +5,7 @@ from typing import Any
 
 import aiosqlite
 
+from klatrebot_v2.db import user_aliases
 from klatrebot_v2.memory.retrieval import get_memory_sources, recall_community_memory
 
 
@@ -19,6 +20,11 @@ MEMORY_TOOL_DEFS = [
                 "query": {"type": "string"},
                 "channel_id": {"type": "integer"},
                 "people": {"type": "array", "items": {"type": "integer"}},
+                "people_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Real names, nicknames, or Discord display names to resolve through KlatreBot's alias table.",
+                },
                 "date_start": {"type": "string", "description": "ISO timestamp, inclusive"},
                 "date_end": {"type": "string", "description": "ISO timestamp, exclusive"},
                 "memory_types": {
@@ -61,17 +67,26 @@ async def execute_memory_tool(
     if name == "recall_community_memory":
         start = _parse_dt(arguments.get("date_start"))
         end = _parse_dt(arguments.get("date_end"))
+        people_resolution = await user_aliases.resolve_people_names(conn, arguments.get("people_names"))
+        people = _merge_people(arguments.get("people"), people_resolution.resolved_ids)
         result = await recall_community_memory(
             conn,
             run_id=run_id,
             query=arguments["query"],
             channel_id=arguments.get("channel_id"),
-            people=arguments.get("people"),
+            people=people,
             date_range=(start, end) if start or end else None,
             memory_types=arguments.get("memory_types"),
             limit=int(arguments.get("limit") or 6),
         )
-        return result.model_dump_json()
+        payload = result.model_dump(mode="json")
+        if arguments.get("people_names"):
+            payload["resolved_people"] = {
+                "ids": people_resolution.resolved_ids,
+                "ambiguous": people_resolution.ambiguous,
+                "unmatched": people_resolution.unmatched,
+            }
+        return json.dumps(payload, ensure_ascii=False)
 
     if name == "get_memory_sources":
         result = await get_memory_sources(
@@ -88,3 +103,9 @@ def _parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(value)
+
+
+def _merge_people(raw_people: list[int] | None, resolved_people: list[int]) -> list[int] | None:
+    merged = {int(person) for person in raw_people or []}
+    merged.update(resolved_people)
+    return sorted(merged) if merged else None

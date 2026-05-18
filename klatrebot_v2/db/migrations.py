@@ -25,6 +25,19 @@ _DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_messages_channel_ts ON messages(channel_id, timestamp_utc)",
     """
+    CREATE TABLE IF NOT EXISTS user_aliases (
+        discord_user_id     INTEGER NOT NULL,
+        alias               TEXT NOT NULL,
+        alias_normalized    TEXT NOT NULL,
+        source              TEXT NOT NULL CHECK(source IN ('config','discord_display')),
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY(discord_user_id, alias_normalized)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_user_aliases_normalized ON user_aliases(alias_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_user_aliases_user ON user_aliases(discord_user_id)",
+    """
     CREATE TABLE IF NOT EXISTS attendance_session (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
         date_local          TEXT NOT NULL,

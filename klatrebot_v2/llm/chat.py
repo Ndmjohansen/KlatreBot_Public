@@ -18,7 +18,7 @@ def _resolve_mentions(text: str, names: dict[int, str]) -> str:
 from klatrebot_v2.settings import get_settings
 from klatrebot_v2.llm.client import get_client
 from klatrebot_v2.llm.prompt import load_soul
-from klatrebot_v2.db import messages as msg_db, users as users_db
+from klatrebot_v2.db import messages as msg_db, user_aliases, users as users_db
 from klatrebot_v2.memory import tools as memory_tools
 
 
@@ -108,17 +108,20 @@ async def reply(
         if names
         else "(none)"
     )
+    memory_run_id = s.memory_active_run_id if s.memory_enabled else None
+    alias_map = await user_aliases.format_alias_prompt_map(conn) if memory_run_id is not None else "(memory disabled)"
 
     full_input = (
         f"{soul}\n\n"
         f"CONTEXT (recent chat):\n{context_block}\n\n"
         f"Asking user Discord ID: {asking_user_id}\n\n"
         f"MENTION_TOKENS (use exact token to ping a user):\n{mention_tokens}\n\n"
+        f"KNOWN_USER_ALIASES:\n{alias_map}\n"
+        "Use people_names in memory tool calls for these aliases.\n\n"
         f"QUESTION: {resolved_question}"
     )
     client = get_client()
     tools = [{"type": "web_search"}]
-    memory_run_id = s.memory_active_run_id if s.memory_enabled else None
     if memory_run_id is not None:
         tools.extend(memory_tools.MEMORY_TOOL_DEFS)
 

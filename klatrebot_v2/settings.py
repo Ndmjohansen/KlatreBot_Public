@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     model: str = "gpt-5.4"
     soul_path: str = "./SOUL.MD"
     db_path: str = "./klatrebot_v2.db"
+    user_aliases_config_path: str | None = None
 
     timezone: str = "Europe/Copenhagen"
     klatretid_days: list[int] = [0, 3]

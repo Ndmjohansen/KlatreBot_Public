@@ -176,6 +176,7 @@ async def test_chat_once_uses_memory_tools_without_discord(monkeypatch, db):
         assert conn is db
         assert run_id == 5
         assert name == "recall_community_memory"
+        assert arguments["channel_id"] == 1
         return '{"answerable": true}'
 
     monkeypatch.setattr("klatrebot_v2.memory.__main__.execute_memory_tool", fake_execute)
@@ -219,6 +220,54 @@ async def test_chat_once_includes_recent_cli_context(monkeypatch, db):
     assert "Planen var den 14. eller 15." in first_call["input"]
 
 
+async def test_chat_once_defaults_channel_id_from_settings(monkeypatch, db):
+    monkeypatch.setenv("DISCORD_KEY", "x")
+    monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1003718776430268588")
+    monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3")
+    from klatrebot_v2.settings import get_settings
+    get_settings.cache_clear()
+
+    response = MagicMock(id="resp_1", output_text="ok")
+    response.output = []
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(return_value=response)
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.get_client", lambda: fake_client)
+
+    await chat_once(db, run_id=5, question="hvad skete der?")
+
+    first_call = fake_client.responses.create.await_args.kwargs
+    assert "CHANNEL_ID: 1003718776430268588" in first_call["input"]
+
+
+async def test_chat_once_includes_known_user_aliases(monkeypatch, db):
+    monkeypatch.setenv("DISCORD_KEY", "x")
+    monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1")
+    monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3")
+    from klatrebot_v2.db import user_aliases
+    from klatrebot_v2.settings import get_settings
+    get_settings.cache_clear()
+    await user_aliases.upsert_alias(db, discord_user_id=42, alias="Tobi", source="config")
+    await user_aliases.upsert_alias(db, discord_user_id=42, alias="Tobias", source="config")
+
+    response = MagicMock(id="resp_1", output_text="ok")
+    response.output = []
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(return_value=response)
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.get_client", lambda: fake_client)
+
+    await chat_once(db, run_id=5, question="hvad med Tobi?")
+
+    first_call = fake_client.responses.create.await_args.kwargs
+    assert "KNOWN_USER_ALIASES:" in first_call["input"]
+    assert "Tobi / Tobias -> 42" in first_call["input"]
+
+
 async def test_chat_once_executes_multiple_memory_tool_rounds(monkeypatch, db):
     monkeypatch.setenv("DISCORD_KEY", "x")
     monkeypatch.setenv("OPENAI_KEY", "x")
@@ -256,7 +305,7 @@ async def test_chat_once_executes_multiple_memory_tool_rounds(monkeypatch, db):
 
     assert answer == "Kilde fundet."
     assert calls == [
-        ("recall_community_memory", {"query": "Spanien"}),
+        ("recall_community_memory", {"query": "Spanien", "channel_id": 1}),
         ("get_memory_sources", {"source_handles": ["mem:1"]}),
     ]
     assert fake_client.responses.create.await_count == 3
