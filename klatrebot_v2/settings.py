@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     rate_limit_per_user_per_hour: int = 30
     log_level: str = "INFO"
 
+    memory_enabled: bool = False
+    memory_active_run_id: int | None = None
+    memory_compiler_model: str = "gpt-5.4-mini"
+    memory_segment_gap_minutes: int = 30
+    memory_segment_min_human_messages: int = 8
+    memory_segment_min_total_chars: int = 500
+    memory_segment_min_participants: int = 3
+    memory_segment_max_messages: int = 100
+    memory_segment_max_duration_minutes: int = 120
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
