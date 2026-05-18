@@ -63,6 +63,15 @@ async def recall_community_memory(
     if not query:
         return RecallResult(answerable=False)
 
+    rollup_results = []
+    if _should_search_rollups(query, date_range, memory_types):
+        rollup_results = await _search_rollups(
+            conn,
+            run_id=run_id,
+            query=query,
+            channel_id=channel_id,
+            limit=limit,
+        )
     segment_results = await _search_segments(
         conn,
         run_id=run_id,
@@ -75,13 +84,14 @@ async def recall_community_memory(
         conn,
         run_id=run_id,
         query=query,
+        channel_id=channel_id,
         memory_types=memory_types,
         date_range=date_range,
         people=people,
         limit=limit,
     )
     item_results = await _attach_related_memories(conn, run_id=run_id, items=item_results)
-    results = [*item_results, *segment_results][:limit]
+    results = [*rollup_results, *item_results, *segment_results][:limit]
     return RecallResult(
         answerable=bool(results),
         results=results,
@@ -105,6 +115,8 @@ async def get_memory_sources(
             message_ids.update(await _segment_message_ids(conn, int(raw_id)))
         elif kind == "mem":
             message_ids.update(await _memory_item_source_ids(conn, int(raw_id)))
+        elif kind == "roll":
+            message_ids.update(await _rollup_message_ids(conn, int(raw_id)))
 
     expanded_ids: set[int] = set()
     for message_id in message_ids:
@@ -135,6 +147,47 @@ async def get_memory_sources(
             is_bot=bool(row[6]),
         )
         for row in await cursor.fetchall()
+    ]
+
+
+async def _search_rollups(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    query: str,
+    channel_id: int | None,
+    limit: int,
+) -> list[MemoryResult]:
+    where = ["mr.compiler_run_id = ?", "mr.status = 'completed'", "memory_rollups_fts MATCH ?"]
+    params: list[Any] = [run_id, _fts_query(query)]
+    if channel_id is not None:
+        where.append("mr.channel_id = ?")
+        params.append(channel_id)
+    params.append(limit)
+    cursor = await conn.execute(
+        f"""
+        SELECT mr.id, mr.period_type, mr.title, mr.summary, mr.key_items_json,
+               mr.period_start_utc, mr.period_end_utc
+        FROM memory_rollups_fts
+        JOIN memory_rollups mr ON mr.id = memory_rollups_fts.rowid
+        WHERE {' AND '.join(where)}
+        ORDER BY CASE mr.period_type WHEN 'month' THEN 0 ELSE 1 END,
+                 bm25(memory_rollups_fts)
+        LIMIT ?
+        """,
+        params,
+    )
+    rows = await cursor.fetchall()
+    return [
+        MemoryResult(
+            kind=f"rollup_{row[1]}",
+            source_handle=f"roll:{row[0]}",
+            topic_title=row[2],
+            summary=row[3],
+            text="\n".join(_json_str_list(row[4])),
+            time_range=f"{row[5]} - {row[6]}",
+        )
+        for row in rows
     ]
 
 
@@ -185,6 +238,7 @@ async def _search_items(
     *,
     run_id: int,
     query: str,
+    channel_id: int | None,
     memory_types: list[str] | None,
     date_range: tuple[datetime | None, datetime | None] | None,
     people: list[int] | None,
@@ -192,6 +246,9 @@ async def _search_items(
 ) -> list[MemoryResult]:
     where = ["mi.compiler_run_id = ?", "memory_items_fts MATCH ?"]
     params: list[Any] = [run_id, _fts_query(query)]
+    if channel_id is not None:
+        where.append("cs.channel_id = ?")
+        params.append(channel_id)
     if memory_types:
         where.append(f"mi.type IN ({','.join('?' for _ in memory_types)})")
         params.extend(memory_types)
@@ -200,9 +257,10 @@ async def _search_items(
     cursor = await conn.execute(
         f"""
         SELECT mi.id, mi.type, mi.subject, mi.text, mi.confidence, mi.speaker_ids_json,
-               mi.segment_id, mi.created_at_source
+               mi.segment_id, mi.created_at_source, mi.last_seen_at_source
         FROM memory_items_fts
         JOIN memory_items mi ON mi.id = memory_items_fts.rowid
+        JOIN conversation_segments cs ON cs.id = mi.segment_id
         WHERE {' AND '.join(where)}
         ORDER BY bm25(memory_items_fts)
         LIMIT ?
@@ -218,6 +276,7 @@ async def _search_items(
             subject=row[2],
             text=row[3],
             confidence=row[4],
+            time_range=f"{row[7]} - {row[8]}" if row[7] and row[8] else None,
             participants=_json_int_list(row[5]),
             segment_id=row[6],
             created_at_source=datetime.fromisoformat(row[7]) if row[7] else None,
@@ -367,6 +426,31 @@ async def _memory_item_source_ids(conn: aiosqlite.Connection, memory_item_id: in
     return [int(row[0]) for row in rows]
 
 
+async def _rollup_message_ids(conn: aiosqlite.Connection, rollup_id: int, seen: set[int] | None = None) -> list[int]:
+    seen = seen or set()
+    if rollup_id in seen:
+        return []
+    seen.add(rollup_id)
+    rows = await conn.execute_fetchall(
+        """
+        SELECT source_kind, source_id
+        FROM memory_rollup_sources
+        WHERE rollup_id = ?
+        ORDER BY source_kind, source_id
+        """,
+        (rollup_id,),
+    )
+    out: set[int] = set()
+    for source_kind, source_id in rows:
+        if source_kind == "segment":
+            out.update(await _segment_message_ids(conn, int(source_id)))
+        elif source_kind == "memory_item":
+            out.update(await _memory_item_source_ids(conn, int(source_id)))
+        elif source_kind == "rollup":
+            out.update(await _rollup_message_ids(conn, int(source_id), seen))
+    return sorted(out)
+
+
 async def _nearby_message_ids(
     conn: aiosqlite.Connection,
     message_id: int,
@@ -431,3 +515,26 @@ def _json_int_list(raw: str) -> list[int]:
         return [int(x) for x in json.loads(raw or "[]")]
     except (TypeError, ValueError, json.JSONDecodeError):
         return []
+
+
+def _json_str_list(raw: str) -> list[str]:
+    import json
+
+    try:
+        return [str(x) for x in json.loads(raw or "[]") if str(x)]
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+
+
+def _should_search_rollups(
+    query: str,
+    date_range: tuple[datetime | None, datetime | None] | None,
+    memory_types: list[str] | None,
+) -> bool:
+    if date_range or memory_types:
+        return False
+    lowered = query.lower()
+    return any(
+        token in lowered
+        for token in ["hvornår", "sidst", "plejer", "skete", "fest", "tur", "hos ", "julefrokost"]
+    )

@@ -115,6 +115,7 @@ async def reply(
         f"{soul}\n\n"
         f"CONTEXT (recent chat):\n{context_block}\n\n"
         f"Asking user Discord ID: {asking_user_id}\n\n"
+        f"CHANNEL_ID: {channel_id}\n\n"
         f"MENTION_TOKENS (use exact token to ping a user):\n{mention_tokens}\n\n"
         f"KNOWN_USER_ALIASES:\n{alias_map}\n"
         "Use people_names in memory tool calls for these aliases.\n\n"
@@ -138,11 +139,14 @@ async def reply(
             break
         tool_outputs = []
         for call in _extract_function_calls(resp):
+            arguments = dict(call["arguments"])
+            if call["name"] == "recall_community_memory" and "channel_id" not in arguments:
+                arguments["channel_id"] = channel_id
             output = await memory_tools.execute_memory_tool(
                 conn,
                 run_id=memory_run_id,
                 name=call["name"],
-                arguments=call["arguments"],
+                arguments=arguments,
             )
             tool_outputs.append(
                 {

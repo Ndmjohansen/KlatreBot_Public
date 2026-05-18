@@ -70,6 +70,7 @@ _DDL = [
         to_time_utc         TEXT,
         channel_ids_json    TEXT NOT NULL DEFAULT '[]',
         config_json         TEXT NOT NULL DEFAULT '{}',
+        config_hash         TEXT,
         prompt_version      TEXT NOT NULL,
         compiler_model      TEXT NOT NULL,
         error               TEXT,
@@ -81,6 +82,7 @@ _DDL = [
     CREATE TABLE IF NOT EXISTS conversation_segments (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
         compiler_run_id     INTEGER NOT NULL,
+        segment_key         TEXT,
         channel_id          INTEGER NOT NULL,
         start_time_utc      TEXT NOT NULL,
         end_time_utc        TEXT NOT NULL,
@@ -93,6 +95,8 @@ _DDL = [
         importance          TEXT NOT NULL DEFAULT 'normal',
         status              TEXT NOT NULL CHECK(status IN ('candidate','summarized','skipped','failed')),
         skip_reason         TEXT,
+        error               TEXT,
+        retry_count         INTEGER NOT NULL DEFAULT 0,
         created_at          TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY(compiler_run_id) REFERENCES memory_compiler_runs(id)
     )
@@ -155,6 +159,46 @@ _DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_memory_item_tags_tag ON memory_item_tags(tag)",
     """
+    CREATE TABLE IF NOT EXISTS memory_rollups (
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        compiler_run_id             INTEGER NOT NULL,
+        channel_id                  INTEGER NOT NULL,
+        period_type                 TEXT NOT NULL CHECK(period_type IN ('week','month')),
+        period_start_utc            TEXT NOT NULL,
+        period_end_utc              TEXT NOT NULL,
+        title                       TEXT NOT NULL DEFAULT '',
+        summary                     TEXT NOT NULL DEFAULT '',
+        key_items_json              TEXT NOT NULL DEFAULT '[]',
+        importance                  TEXT NOT NULL CHECK(importance IN ('low','normal','high')) DEFAULT 'normal',
+        status                      TEXT NOT NULL CHECK(status IN ('pending','completed','failed','stale')) DEFAULT 'pending',
+        error                       TEXT,
+        source_fingerprint          TEXT NOT NULL DEFAULT '',
+        created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(compiler_run_id) REFERENCES memory_compiler_runs(id),
+        UNIQUE(compiler_run_id, channel_id, period_type, period_start_utc, period_end_utc)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_rollups_run_period ON memory_rollups(compiler_run_id, period_type, period_start_utc, period_end_utc)",
+    """
+    CREATE TABLE IF NOT EXISTS memory_rollup_sources (
+        rollup_id           INTEGER NOT NULL,
+        source_kind         TEXT NOT NULL CHECK(source_kind IN ('segment','memory_item','rollup')),
+        source_id           INTEGER NOT NULL,
+        PRIMARY KEY(rollup_id, source_kind, source_id),
+        FOREIGN KEY(rollup_id) REFERENCES memory_rollups(id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS memory_rollup_tags (
+        rollup_id           INTEGER NOT NULL,
+        tag                 TEXT NOT NULL,
+        PRIMARY KEY(rollup_id, tag),
+        FOREIGN KEY(rollup_id) REFERENCES memory_rollups(id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_rollup_tags_tag ON memory_rollup_tags(tag)",
+    """
     CREATE VIRTUAL TABLE IF NOT EXISTS conversation_segments_fts
     USING fts5(topic_title, summary, content='conversation_segments', content_rowid='id')
     """,
@@ -162,10 +206,33 @@ _DDL = [
     CREATE VIRTUAL TABLE IF NOT EXISTS memory_items_fts
     USING fts5(type, subject, text, content='memory_items', content_rowid='id')
     """,
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS memory_rollups_fts
+    USING fts5(title, summary, key_items_json, content='memory_rollups', content_rowid='id')
+    """,
+]
+
+_ALTER = [
+    "ALTER TABLE memory_compiler_runs ADD COLUMN config_hash TEXT",
+    "ALTER TABLE conversation_segments ADD COLUMN segment_key TEXT",
+    "ALTER TABLE conversation_segments ADD COLUMN error TEXT",
+    "ALTER TABLE conversation_segments ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
+]
+
+_POST_DDL = [
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_run_key ON conversation_segments(compiler_run_id, segment_key)",
 ]
 
 
 async def run(conn: aiosqlite.Connection) -> None:
     for stmt in _DDL:
+        await conn.execute(stmt)
+    for stmt in _ALTER:
+        try:
+            await conn.execute(stmt)
+        except aiosqlite.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    for stmt in _POST_DDL:
         await conn.execute(stmt)
     await conn.commit()

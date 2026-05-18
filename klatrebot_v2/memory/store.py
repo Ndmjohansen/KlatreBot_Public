@@ -24,6 +24,7 @@ async def create_compiler_run(
     to_time: datetime | None = None,
     channel_ids: list[int] | None = None,
     config: dict[str, Any] | None = None,
+    config_hash: str | None = None,
     source_db_label: str | None = None,
 ) -> int:
     await delete_compiler_run_by_name(conn, name)
@@ -31,8 +32,8 @@ async def create_compiler_run(
         """
         INSERT INTO memory_compiler_runs
             (name, status, source_db_label, from_time_utc, to_time_utc, channel_ids_json,
-             config_json, prompt_version, compiler_model)
-        VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?)
+             config_json, config_hash, prompt_version, compiler_model)
+        VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             name,
@@ -41,6 +42,7 @@ async def create_compiler_run(
             _dt(to_time),
             json.dumps(channel_ids or []),
             json.dumps(config or {}),
+            config_hash,
             PROMPT_VERSION,
             compiler_model,
         ),
@@ -49,11 +51,97 @@ async def create_compiler_run(
     return int(cursor.lastrowid)
 
 
+async def resume_or_create_compiler_run(
+    conn: aiosqlite.Connection,
+    *,
+    name: str,
+    compiler_model: str,
+    from_time: datetime | None = None,
+    to_time: datetime | None = None,
+    channel_ids: list[int] | None = None,
+    config: dict[str, Any] | None = None,
+    config_hash: str | None = None,
+    source_db_label: str | None = None,
+) -> int:
+    existing = await get_compiler_run_by_name(conn, name)
+    if not existing:
+        return await create_compiler_run(
+            conn,
+            name=name,
+            compiler_model=compiler_model,
+            from_time=from_time,
+            to_time=to_time,
+            channel_ids=channel_ids,
+            config=config,
+            config_hash=config_hash,
+            source_db_label=source_db_label,
+        )
+    run_id = int(existing["id"])
+    await conn.execute(
+        """
+        UPDATE memory_compiler_runs
+        SET status = 'running',
+            completed_at = NULL,
+            error = NULL,
+            source_db_label = ?,
+            from_time_utc = CASE
+                WHEN from_time_utc IS NULL OR ? < from_time_utc THEN ?
+                ELSE from_time_utc
+            END,
+            to_time_utc = CASE
+                WHEN to_time_utc IS NULL OR ? > to_time_utc THEN ?
+                ELSE to_time_utc
+            END,
+            channel_ids_json = ?,
+            config_json = ?,
+            config_hash = COALESCE(config_hash, ?),
+            compiler_model = ?
+        WHERE id = ?
+        """,
+        (
+            source_db_label,
+            _dt(from_time),
+            _dt(from_time),
+            _dt(to_time),
+            _dt(to_time),
+            json.dumps(channel_ids or []),
+            json.dumps(config or {}),
+            config_hash,
+            compiler_model,
+            run_id,
+        ),
+    )
+    await conn.commit()
+    return run_id
+
+
 async def delete_compiler_run_by_name(conn: aiosqlite.Connection, name: str) -> None:
     existing = await _fetch_one_dict(conn, "SELECT id FROM memory_compiler_runs WHERE name = ?", (name,))
     if not existing:
         return
     run_id = int(existing["id"])
+    await conn.execute(
+        """
+        DELETE FROM memory_rollups_fts
+        WHERE rowid IN (SELECT id FROM memory_rollups WHERE compiler_run_id = ?)
+        """,
+        (run_id,),
+    )
+    await conn.execute(
+        """
+        DELETE FROM memory_rollup_sources
+        WHERE rollup_id IN (SELECT id FROM memory_rollups WHERE compiler_run_id = ?)
+        """,
+        (run_id,),
+    )
+    await conn.execute(
+        """
+        DELETE FROM memory_rollup_tags
+        WHERE rollup_id IN (SELECT id FROM memory_rollups WHERE compiler_run_id = ?)
+        """,
+        (run_id,),
+    )
+    await conn.execute("DELETE FROM memory_rollups WHERE compiler_run_id = ?", (run_id,))
     await conn.execute(
         """
         DELETE FROM memory_items_fts
@@ -148,6 +236,91 @@ async def list_segments_for_run(
     )
 
 
+async def get_segment_by_key(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    segment_key: str,
+) -> dict[str, Any] | None:
+    return await _fetch_one_dict(
+        conn,
+        "SELECT * FROM conversation_segments WHERE compiler_run_id = ? AND segment_key = ?",
+        (run_id, segment_key),
+    )
+
+
+async def delete_segment_tree(conn: aiosqlite.Connection, segment_id: int) -> None:
+    await conn.execute(
+        "DELETE FROM memory_items_fts WHERE rowid IN (SELECT id FROM memory_items WHERE segment_id = ?)",
+        (segment_id,),
+    )
+    await conn.execute(
+        """
+        DELETE FROM memory_item_sources
+        WHERE memory_item_id IN (SELECT id FROM memory_items WHERE segment_id = ?)
+        """,
+        (segment_id,),
+    )
+    await conn.execute(
+        """
+        DELETE FROM memory_item_tags
+        WHERE memory_item_id IN (SELECT id FROM memory_items WHERE segment_id = ?)
+        """,
+        (segment_id,),
+    )
+    await conn.execute("DELETE FROM memory_items WHERE segment_id = ?", (segment_id,))
+    await conn.execute("DELETE FROM conversation_segments_fts WHERE rowid = ?", (segment_id,))
+    await conn.execute("DELETE FROM conversation_segment_tags WHERE segment_id = ?", (segment_id,))
+    await conn.execute("DELETE FROM segment_messages WHERE segment_id = ?", (segment_id,))
+    await conn.execute("DELETE FROM conversation_segments WHERE id = ?", (segment_id,))
+    await conn.commit()
+
+
+async def list_segment_message_id_sets_for_run(
+    conn: aiosqlite.Connection,
+    run_id: int,
+) -> set[tuple[int, ...]]:
+    rows = await conn.execute_fetchall(
+        """
+        SELECT sm.segment_id, sm.discord_message_id
+        FROM segment_messages sm
+        JOIN conversation_segments cs ON cs.id = sm.segment_id
+        WHERE cs.compiler_run_id = ?
+        ORDER BY sm.segment_id, sm.position
+        """,
+        (run_id,),
+    )
+    grouped: dict[int, list[int]] = {}
+    for segment_id, message_id in rows:
+        grouped.setdefault(int(segment_id), []).append(int(message_id))
+    return {tuple(ids) for ids in grouped.values()}
+
+
+async def overlapping_segments_for_messages(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    channel_id: int,
+    message_ids: list[int],
+) -> list[dict[str, Any]]:
+    if not message_ids:
+        return []
+    placeholders = ",".join("?" for _ in message_ids)
+    return await _fetch_all_dicts(
+        conn,
+        f"""
+        SELECT DISTINCT cs.id, cs.status, cs.segment_key
+        FROM conversation_segments cs
+        JOIN segment_messages sm ON sm.segment_id = cs.id
+        WHERE cs.compiler_run_id = ?
+          AND cs.channel_id = ?
+          AND sm.discord_message_id IN ({placeholders})
+        ORDER BY cs.id
+        """,
+        (run_id, channel_id, *message_ids),
+    )
+
+
 async def load_messages(
     conn: aiosqlite.Connection,
     *,
@@ -198,23 +371,27 @@ async def insert_segment(
     *,
     compiler_run_id: int,
     segment: SegmentCandidate,
+    segment_key: str | None = None,
     topic_title: str,
     summary: str,
     importance: str,
     tags: list[str] | None = None,
     status: str = "summarized",
     skip_reason: str | None = None,
+    error: str | None = None,
+    retry_count: int = 0,
 ) -> int:
     cursor = await conn.execute(
         """
         INSERT INTO conversation_segments
-            (compiler_run_id, channel_id, start_time_utc, end_time_utc, message_count,
+            (compiler_run_id, segment_key, channel_id, start_time_utc, end_time_utc, message_count,
              human_message_count, total_chars, participant_ids_json, topic_title,
-             summary, importance, status, skip_reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             summary, importance, status, skip_reason, error, retry_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             compiler_run_id,
+            segment_key,
             segment.channel_id,
             segment.start_time_utc.isoformat(),
             segment.end_time_utc.isoformat(),
@@ -227,6 +404,8 @@ async def insert_segment(
             importance,
             status,
             skip_reason,
+            error,
+            retry_count,
         ),
     )
     segment_id = int(cursor.lastrowid)
@@ -255,6 +434,187 @@ async def insert_segment(
         )
     await conn.commit()
     return segment_id
+
+
+async def completed_segments_for_rollups(
+    conn: aiosqlite.Connection,
+    run_id: int,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT id, channel_id, start_time_utc, end_time_utc, topic_title, summary, importance
+        FROM conversation_segments
+        WHERE compiler_run_id = ? AND status = 'summarized'
+        ORDER BY channel_id, start_time_utc, id
+        """,
+        (run_id,),
+    )
+
+
+async def memory_items_for_segments(
+    conn: aiosqlite.Connection,
+    segment_ids: list[int],
+) -> list[dict[str, Any]]:
+    if not segment_ids:
+        return []
+    placeholders = ",".join("?" for _ in segment_ids)
+    return await _fetch_all_dicts(
+        conn,
+        f"""
+        SELECT id, segment_id, type, subject, text, confidence, importance,
+               created_at_source, last_seen_at_source
+        FROM memory_items
+        WHERE segment_id IN ({placeholders})
+        ORDER BY created_at_source, id
+        """,
+        tuple(segment_ids),
+    )
+
+
+async def list_rollups_for_run(
+    conn: aiosqlite.Connection,
+    run_id: int,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT * FROM memory_rollups
+        WHERE compiler_run_id = ?
+        ORDER BY period_start_utc, period_type, channel_id
+        """,
+        (run_id,),
+    )
+
+
+async def completed_rollups_for_months(
+    conn: aiosqlite.Connection,
+    run_id: int,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT * FROM memory_rollups
+        WHERE compiler_run_id = ? AND period_type = 'week' AND status = 'completed'
+        ORDER BY channel_id, period_start_utc
+        """,
+        (run_id,),
+    )
+
+
+async def get_rollup_by_period(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    channel_id: int,
+    period_type: str,
+    period_start_utc: str,
+    period_end_utc: str,
+) -> dict[str, Any] | None:
+    return await _fetch_one_dict(
+        conn,
+        """
+        SELECT * FROM memory_rollups
+        WHERE compiler_run_id = ? AND channel_id = ? AND period_type = ?
+          AND period_start_utc = ? AND period_end_utc = ?
+        """,
+        (run_id, channel_id, period_type, period_start_utc, period_end_utc),
+    )
+
+
+async def upsert_rollup(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    channel_id: int,
+    period_type: str,
+    period_start_utc: str,
+    period_end_utc: str,
+    title: str,
+    summary: str,
+    key_items: list[str],
+    tags: list[str],
+    importance: str,
+    status: str,
+    error: str | None,
+    source_fingerprint: str,
+    source_segments: list[int] | None = None,
+    source_memory_items: list[int] | None = None,
+    source_rollups: list[int] | None = None,
+) -> int:
+    existing = await get_rollup_by_period(
+        conn,
+        run_id=run_id,
+        channel_id=channel_id,
+        period_type=period_type,
+        period_start_utc=period_start_utc,
+        period_end_utc=period_end_utc,
+    )
+    if existing:
+        rollup_id = int(existing["id"])
+        await conn.execute(
+            """
+            UPDATE memory_rollups
+            SET title = ?, summary = ?, key_items_json = ?, importance = ?,
+                status = ?, error = ?, source_fingerprint = ?, updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (title, summary, json.dumps(key_items, ensure_ascii=False), importance, status, error, source_fingerprint, rollup_id),
+        )
+        await conn.execute("DELETE FROM memory_rollups_fts WHERE rowid = ?", (rollup_id,))
+        await conn.execute("DELETE FROM memory_rollup_sources WHERE rollup_id = ?", (rollup_id,))
+        await conn.execute("DELETE FROM memory_rollup_tags WHERE rollup_id = ?", (rollup_id,))
+    else:
+        cursor = await conn.execute(
+            """
+            INSERT INTO memory_rollups
+                (compiler_run_id, channel_id, period_type, period_start_utc, period_end_utc,
+                 title, summary, key_items_json, importance, status, error, source_fingerprint)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                channel_id,
+                period_type,
+                period_start_utc,
+                period_end_utc,
+                title,
+                summary,
+                json.dumps(key_items, ensure_ascii=False),
+                importance,
+                status,
+                error,
+                source_fingerprint,
+            ),
+        )
+        rollup_id = int(cursor.lastrowid)
+    await conn.execute(
+        """
+        INSERT INTO memory_rollups_fts(rowid, title, summary, key_items_json)
+        VALUES (?, ?, ?, ?)
+        """,
+        (rollup_id, title, summary, json.dumps(key_items, ensure_ascii=False)),
+    )
+    for source_kind, ids in (
+        ("segment", source_segments or []),
+        ("memory_item", source_memory_items or []),
+        ("rollup", source_rollups or []),
+    ):
+        for source_id in ids:
+            await conn.execute(
+                """
+                INSERT OR IGNORE INTO memory_rollup_sources (rollup_id, source_kind, source_id)
+                VALUES (?, ?, ?)
+                """,
+                (rollup_id, source_kind, source_id),
+            )
+    for tag in tags:
+        await conn.execute(
+            "INSERT OR IGNORE INTO memory_rollup_tags (rollup_id, tag) VALUES (?, ?)",
+            (rollup_id, tag),
+        )
+    await conn.commit()
+    return rollup_id
 
 
 async def insert_memory_item(

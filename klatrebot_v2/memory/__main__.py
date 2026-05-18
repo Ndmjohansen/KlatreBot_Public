@@ -34,6 +34,7 @@ async def chat_once(
     show_memory: bool = False,
     show_sources: bool = False,
     show_usage: bool = False,
+    show_agent: bool = False,
     channel_id: int | None = None,
     recent_limit: int = 0,
 ) -> str:
@@ -63,12 +64,23 @@ async def chat_once(
     _add_usage(usage_total, resp)
     response_calls = 1
     for _ in range(4):
+        calls = _extract_function_calls(resp)
+        call_traces = []
         tool_outputs = []
         debug_outputs = []
-        for call in _extract_function_calls(resp):
+        for call in calls:
+            raw_arguments = dict(call["arguments"])
             arguments = dict(call["arguments"])
             if call["name"] == "recall_community_memory" and "channel_id" not in arguments:
                 arguments["channel_id"] = effective_channel_id
+            call_traces.append(
+                {
+                    "name": call["name"],
+                    "call_id": call["call_id"],
+                    "raw_arguments": raw_arguments,
+                    "effective_arguments": arguments,
+                }
+            )
             output = await execute_memory_tool(
                 conn,
                 run_id=run_id,
@@ -84,7 +96,11 @@ async def chat_once(
                 }
             )
         if not tool_outputs:
+            if show_agent:
+                _print_agent_response(response_calls, resp, call_traces)
             break
+        if show_agent:
+            _print_agent_response(response_calls, resp, call_traces)
         if show_memory:
             for name, output in debug_outputs:
                 print(f"\n[{name}]\n{_pretty_json(output)}")
@@ -123,7 +139,11 @@ def _build_parser() -> argparse.ArgumentParser:
     compile_parser.add_argument("--name", required=True)
     compile_parser.add_argument("--model")
     compile_parser.add_argument("--concurrency", type=int, default=4)
-    compile_parser.add_argument("--yes", action="store_true", help="Overwrite existing run without prompting")
+    compile_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Delete and rebuild an existing memory run instead of updating it",
+    )
 
     chat_parser = sub.add_parser("chat")
     chat_parser.add_argument("--db", required=True)
@@ -131,6 +151,7 @@ def _build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument("--show-memory", action="store_true")
     chat_parser.add_argument("--show-sources", action="store_true")
     chat_parser.add_argument("--show-usage", action="store_true")
+    chat_parser.add_argument("--show-agent", action="store_true")
     chat_parser.add_argument("--channel-id", type=int)
     chat_parser.add_argument("--recent-limit", type=int, default=8)
     return parser
@@ -141,12 +162,6 @@ async def _compile(args) -> int:
     try:
         await migrations.run(conn)
         await user_aliases.sync_config_aliases(conn, get_settings().user_aliases_config_path)
-        existing = await get_compiler_run_by_name(conn, args.name)
-        if existing and not args.yes:
-            answer = input(f"Memory run '{args.name}' exists. Overwrite? [y/N] ").strip().lower()
-            if answer not in {"y", "yes"}:
-                print("aborted")
-                return 1
         run_id = await compile_run(
             conn,
             config=CompilerConfig(
@@ -157,6 +172,7 @@ async def _compile(args) -> int:
                 compiler_model=args.model,
                 source_db_label=args.db,
                 concurrency=args.concurrency,
+                rebuild=args.rebuild,
                 segment=_segment_config_from_settings(),
             ),
             progress=lambda message: print(message, flush=True),
@@ -188,6 +204,7 @@ async def _chat(args) -> int:
                 show_memory=args.show_memory,
                 show_sources=args.show_sources,
                 show_usage=args.show_usage,
+                show_agent=args.show_agent,
                 channel_id=args.channel_id,
                 recent_limit=args.recent_limit,
             )
@@ -253,6 +270,15 @@ def _pretty_json(raw: str) -> str:
         return json.dumps(json.loads(raw), ensure_ascii=False, indent=2)
     except json.JSONDecodeError:
         return raw
+
+
+def _print_agent_response(index: int, resp, function_calls: list[dict]) -> None:
+    payload = {
+        "response_id": getattr(resp, "id", None),
+        "output_text": getattr(resp, "output_text", "") or "",
+        "function_calls": function_calls,
+    }
+    print(f"\n[agent response {index}]\n{json.dumps(payload, ensure_ascii=False, indent=2)}")
 
 
 def _empty_usage() -> dict[str, int]:

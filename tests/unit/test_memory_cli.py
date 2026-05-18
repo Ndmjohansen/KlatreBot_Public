@@ -86,37 +86,52 @@ async def test_compile_cli_uses_segment_defaults_from_env(monkeypatch, tmp_path)
     assert called["segment"].max_duration_minutes == 90
 
 
-async def test_compile_cli_declines_duplicate_run_without_overwrite_confirmation(monkeypatch, tmp_path):
+async def test_compile_cli_updates_duplicate_run_by_default(monkeypatch, tmp_path):
     db_path = tmp_path / "memory.db"
-    fake_compile = AsyncMock()
+    called = {}
+
+    async def fake_compile(conn, *, config, summarizer=None, rollup_summarizer=None, progress=None):
+        called["rebuild"] = config.rebuild
+        return 2
+
     monkeypatch.setattr("klatrebot_v2.memory.__main__.compile_run", fake_compile)
-
-    async def fake_get_by_name(conn, name):
-        return {"id": 1}
-
-    monkeypatch.setattr("klatrebot_v2.memory.__main__.get_compiler_run_by_name", fake_get_by_name)
-    monkeypatch.setattr("builtins.input", lambda _prompt: "n")
 
     code = await main(["compile", "--db", str(db_path), "--name", "april"])
 
-    assert code == 1
-    fake_compile.assert_not_awaited()
+    assert code == 0
+    assert called["rebuild"] is False
 
 
-async def test_compile_cli_overwrites_duplicate_run_with_yes_flag(monkeypatch, tmp_path):
+async def test_compile_cli_rebuilds_duplicate_run_with_rebuild_flag(monkeypatch, tmp_path):
     db_path = tmp_path / "memory.db"
-    fake_compile = AsyncMock(return_value=2)
+    called = {}
+
+    async def fake_compile(conn, *, config, summarizer=None, rollup_summarizer=None, progress=None):
+        called["rebuild"] = config.rebuild
+        return 2
+
     monkeypatch.setattr("klatrebot_v2.memory.__main__.compile_run", fake_compile)
 
-    async def fake_get_by_name(conn, name):
-        return {"id": 1}
-
-    monkeypatch.setattr("klatrebot_v2.memory.__main__.get_compiler_run_by_name", fake_get_by_name)
-
-    code = await main(["compile", "--db", str(db_path), "--name", "april", "--yes"])
+    code = await main(["compile", "--db", str(db_path), "--name", "april", "--rebuild"])
 
     assert code == 0
-    fake_compile.assert_awaited_once()
+    assert called["rebuild"] is True
+
+
+async def test_compile_cli_updates_failed_duplicate_run_by_default(monkeypatch, tmp_path):
+    db_path = tmp_path / "memory.db"
+    called = {}
+
+    async def fake_compile(conn, *, config, summarizer=None, rollup_summarizer=None, progress=None):
+        called["rebuild"] = config.rebuild
+        return 2
+
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.compile_run", fake_compile)
+
+    code = await main(["compile", "--db", str(db_path), "--name", "april"])
+
+    assert code == 0
+    assert called["rebuild"] is False
 
 
 async def test_compile_cli_prints_progress(monkeypatch, tmp_path, capsys):
@@ -342,6 +357,43 @@ async def test_chat_once_pretty_prints_show_memory_json(monkeypatch, db, capsys)
     assert '"answerable": true' in out
     assert '  "results": [' in out
     assert '"text": "Spanien er på listen"' in out
+
+
+async def test_chat_once_prints_agent_tool_trace(monkeypatch, db, capsys):
+    monkeypatch.setenv("DISCORD_KEY", "x")
+    monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1")
+    monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3")
+    from klatrebot_v2.settings import get_settings
+    get_settings.cache_clear()
+
+    first = MagicMock(id="resp_1", output_text="")
+    first.output = [
+        type("Call", (), {"type": "function_call", "name": "recall_community_memory", "call_id": "call_1", "arguments": '{"query":"Spanien"}'})()
+    ]
+    second = MagicMock(id="resp_2", output_text="Svar.")
+    second.output = []
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(side_effect=[first, second])
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.get_client", lambda: fake_client)
+
+    async def fake_execute(conn, *, run_id, name, arguments):
+        return '{"answerable":true}'
+
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.execute_memory_tool", fake_execute)
+
+    await chat_once(db, run_id=5, question="Spanien?", show_agent=True)
+
+    out = capsys.readouterr().out
+    assert "[agent response 1]" in out
+    assert '"name": "recall_community_memory"' in out
+    assert '"raw_arguments": {' in out
+    assert '"effective_arguments": {' in out
+    assert '"channel_id": 1' in out
+    assert "[agent response 2]" in out
+    assert "Svar." in out
 
 
 async def test_chat_once_prints_total_token_usage(monkeypatch, db, capsys):
