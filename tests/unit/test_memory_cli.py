@@ -1,7 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+from klatrebot_v2.db import connection, migrations
 from klatrebot_v2.memory.__main__ import chat_once, main, resolve_run_id
 
 
@@ -152,6 +153,178 @@ async def test_compile_cli_prints_progress(monkeypatch, tmp_path, capsys):
     assert "Loaded 8 messages." in out
     assert "Built 1 segments." in out
     assert "compiled run 2: april" in out
+
+
+async def test_compile_rolling_noops_when_disabled(monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "memory.db"
+    monkeypatch.setenv("DISCORD_KEY", "x")
+    monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1")
+    monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("MEMORY_ROLLING_ENABLED", "false")
+    from klatrebot_v2.settings import get_settings
+    get_settings.cache_clear()
+
+    fake_compile = AsyncMock()
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.compile_run", fake_compile)
+
+    code = await main(["compile-rolling"])
+
+    assert code == 0
+    assert fake_compile.await_count == 0
+    assert "Rolling memory disabled." in capsys.readouterr().out
+
+
+async def test_compile_rolling_uses_initial_lookback_and_updates_watermark(monkeypatch, tmp_path):
+    db_path = tmp_path / "memory.db"
+    now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setenv("DISCORD_KEY", "x")
+    monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "42")
+    monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("MEMORY_ROLLING_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ROLLING_RUN_NAME", "production")
+    monkeypatch.setenv("MEMORY_ROLLING_INITIAL_LOOKBACK_HOURS", "24")
+    monkeypatch.setenv("MEMORY_ROLLING_SETTLE_MINUTES", "45")
+    monkeypatch.setenv("MEMORY_ROLLING_TAIL_BUFFER_MINUTES", "180")
+    monkeypatch.setenv("MEMORY_ROLLING_CONCURRENCY", "2")
+    from klatrebot_v2.settings import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setattr("klatrebot_v2.memory.__main__._utcnow", lambda: now, raising=False)
+
+    called = {}
+
+    async def fake_compile(conn, *, config, summarizer=None, rollup_summarizer=None, progress=None):
+        called["name"] = config.name
+        called["from_time"] = config.from_time
+        called["to_time"] = config.to_time
+        called["channel_ids"] = config.channel_ids
+        called["concurrency"] = config.concurrency
+        return 9
+
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.compile_run", fake_compile)
+
+    code = await main(["compile-rolling"])
+
+    assert code == 0
+    assert called == {
+        "name": "production",
+        "from_time": now - timedelta(hours=24),
+        "to_time": now - timedelta(minutes=45),
+        "channel_ids": [42],
+        "concurrency": 2,
+    }
+    conn = await connection.open(str(db_path))
+    try:
+        row = await conn.execute_fetchall(
+            "SELECT last_successful_to_utc, last_error FROM memory_rolling_state WHERE run_name = ?",
+            ("production",),
+        )
+        assert row == [((now - timedelta(minutes=45)).isoformat(), None)]
+    finally:
+        await connection.close(conn)
+
+
+async def test_compile_rolling_uses_watermark_tail_buffer_and_preserves_watermark_on_failure(monkeypatch, tmp_path):
+    db_path = tmp_path / "memory.db"
+    previous_to = datetime(2026, 5, 22, 9, 15, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    conn = await connection.open(str(db_path))
+    try:
+        await migrations.run(conn)
+        await conn.execute(
+            """
+            INSERT INTO memory_rolling_state (run_name, last_successful_to_utc)
+            VALUES (?, ?)
+            """,
+            ("production", previous_to.isoformat()),
+        )
+        await conn.commit()
+    finally:
+        await connection.close(conn)
+
+    monkeypatch.setenv("DISCORD_KEY", "x")
+    monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "42")
+    monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("MEMORY_ROLLING_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ROLLING_RUN_NAME", "production")
+    monkeypatch.setenv("MEMORY_ROLLING_SETTLE_MINUTES", "45")
+    monkeypatch.setenv("MEMORY_ROLLING_TAIL_BUFFER_MINUTES", "180")
+    from klatrebot_v2.settings import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setattr("klatrebot_v2.memory.__main__._utcnow", lambda: now, raising=False)
+
+    called = {}
+
+    async def failing_compile(conn, *, config, summarizer=None, rollup_summarizer=None, progress=None):
+        called["from_time"] = config.from_time
+        called["to_time"] = config.to_time
+        raise RuntimeError("compile failed")
+
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.compile_run", failing_compile)
+
+    code = await main(["compile-rolling"])
+
+    assert code == 1
+    assert called == {
+        "from_time": previous_to - timedelta(minutes=180),
+        "to_time": now - timedelta(minutes=45),
+    }
+    conn = await connection.open(str(db_path))
+    try:
+        row = await conn.execute_fetchall(
+            "SELECT last_successful_to_utc, last_error FROM memory_rolling_state WHERE run_name = ?",
+            ("production",),
+        )
+        assert row == [(previous_to.isoformat(), "compile failed")]
+    finally:
+        await connection.close(conn)
+
+
+async def test_compile_rolling_skips_when_lock_is_active(monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "memory.db"
+    now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    conn = await connection.open(str(db_path))
+    try:
+        await migrations.run(conn)
+        await conn.execute(
+            """
+            INSERT INTO memory_rolling_state (run_name, lock_owner, lock_expires_utc)
+            VALUES (?, ?, ?)
+            """,
+            ("production", "other", (now + timedelta(minutes=30)).isoformat()),
+        )
+        await conn.commit()
+    finally:
+        await connection.close(conn)
+
+    monkeypatch.setenv("DISCORD_KEY", "x")
+    monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "42")
+    monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("MEMORY_ROLLING_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ROLLING_RUN_NAME", "production")
+    from klatrebot_v2.settings import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setattr("klatrebot_v2.memory.__main__._utcnow", lambda: now, raising=False)
+
+    fake_compile = AsyncMock()
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.compile_run", fake_compile)
+
+    code = await main(["compile-rolling"])
+
+    assert code == 0
+    assert fake_compile.await_count == 0
+    assert "Rolling memory compile already active" in capsys.readouterr().out
 
 
 async def test_chat_once_uses_memory_tools_without_discord(monkeypatch, db):

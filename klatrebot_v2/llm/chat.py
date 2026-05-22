@@ -20,6 +20,7 @@ from klatrebot_v2.llm.client import get_client
 from klatrebot_v2.llm.prompt import load_soul
 from klatrebot_v2.db import messages as msg_db, user_aliases, users as users_db
 from klatrebot_v2.memory import tools as memory_tools
+from klatrebot_v2.memory.store import get_compiler_run_by_name
 
 
 async def _names_for_ids(conn, ids: set[int]) -> dict[int, str]:
@@ -108,7 +109,7 @@ async def reply(
         if names
         else "(none)"
     )
-    memory_run_id = s.memory_active_run_id if s.memory_enabled else None
+    memory_run_id = await _active_memory_run_id(conn, s) if s.memory_enabled else None
     alias_map = await user_aliases.format_alias_prompt_map(conn) if memory_run_id is not None else "(memory disabled)"
 
     full_input = (
@@ -167,6 +168,13 @@ async def reply(
             include=["web_search_call.action.sources"],
         )
     return ChatReply(text=resp.output_text or "", sources=_extract_sources(resp))
+
+
+async def _active_memory_run_id(conn, settings) -> int | None:
+    if settings.memory_active_run_name:
+        found = await get_compiler_run_by_name(conn, settings.memory_active_run_name)
+        return int(found["id"]) if found else None
+    return settings.memory_active_run_id
 
 
 _SUMMARY_INSTRUCTIONS = """

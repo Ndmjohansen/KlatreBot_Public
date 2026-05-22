@@ -1,0 +1,26 @@
+[Unit]
+Description=KlatreBot Rolling Memory Compiler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@PROJECT_DIR@
+EnvironmentFile=/etc/klatrebot/klatrebot.env
+Environment=PATH=@POETRY_DIR@:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/env poetry run python3 -m klatrebot_v2.memory compile-rolling
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=klatrebot-memory
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=@PROJECT_DIR@ @DATA_DIR@ -/home/@SERVICE_USER@/.cache/pypoetry -/home/@SERVICE_USER@/.config/pypoetry -/home/@SERVICE_USER@/.local/share/pypoetry
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=512M

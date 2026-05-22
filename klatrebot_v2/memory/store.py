@@ -542,6 +542,111 @@ async def list_rollups_for_run(
     )
 
 
+async def get_rolling_state(conn: aiosqlite.Connection, run_name: str) -> dict[str, Any] | None:
+    return await _fetch_one_dict(
+        conn,
+        "SELECT * FROM memory_rolling_state WHERE run_name = ?",
+        (run_name,),
+    )
+
+
+async def acquire_rolling_lock(
+    conn: aiosqlite.Connection,
+    *,
+    run_name: str,
+    owner: str,
+    now: datetime,
+    lock_expires_at: datetime,
+) -> bool:
+    await conn.execute(
+        "INSERT OR IGNORE INTO memory_rolling_state (run_name) VALUES (?)",
+        (run_name,),
+    )
+    cursor = await conn.execute(
+        """
+        UPDATE memory_rolling_state
+        SET lock_owner = ?, lock_expires_utc = ?, last_started_at = ?,
+            last_error = NULL, updated_at = datetime('now')
+        WHERE run_name = ?
+          AND (
+            lock_expires_utc IS NULL
+            OR lock_expires_utc <= ?
+            OR lock_owner = ?
+          )
+        """,
+        (
+            owner,
+            lock_expires_at.isoformat(),
+            now.isoformat(),
+            run_name,
+            now.isoformat(),
+            owner,
+        ),
+    )
+    await conn.commit()
+    return int(cursor.rowcount or 0) > 0
+
+
+async def complete_rolling_compile(
+    conn: aiosqlite.Connection,
+    *,
+    run_name: str,
+    completed_to: datetime,
+    completed_at: datetime,
+) -> None:
+    await conn.execute(
+        """
+        INSERT INTO memory_rolling_state
+            (run_name, last_successful_to_utc, last_completed_at, last_error,
+             lock_owner, lock_expires_utc, updated_at)
+        VALUES (?, ?, ?, NULL, NULL, NULL, datetime('now'))
+        ON CONFLICT(run_name) DO UPDATE SET
+            last_successful_to_utc = excluded.last_successful_to_utc,
+            last_completed_at = excluded.last_completed_at,
+            last_error = NULL,
+            lock_owner = NULL,
+            lock_expires_utc = NULL,
+            updated_at = datetime('now')
+        """,
+        (run_name, completed_to.isoformat(), completed_at.isoformat()),
+    )
+    await conn.commit()
+
+
+async def fail_rolling_compile(
+    conn: aiosqlite.Connection,
+    *,
+    run_name: str,
+    error: str,
+) -> None:
+    await conn.execute(
+        """
+        INSERT INTO memory_rolling_state
+            (run_name, last_error, lock_owner, lock_expires_utc, updated_at)
+        VALUES (?, ?, NULL, NULL, datetime('now'))
+        ON CONFLICT(run_name) DO UPDATE SET
+            last_error = excluded.last_error,
+            lock_owner = NULL,
+            lock_expires_utc = NULL,
+            updated_at = datetime('now')
+        """,
+        (run_name, error),
+    )
+    await conn.commit()
+
+
+async def release_rolling_lock(conn: aiosqlite.Connection, *, run_name: str) -> None:
+    await conn.execute(
+        """
+        UPDATE memory_rolling_state
+        SET lock_owner = NULL, lock_expires_utc = NULL, updated_at = datetime('now')
+        WHERE run_name = ?
+        """,
+        (run_name,),
+    )
+    await conn.commit()
+
+
 async def get_daily_ambient_by_day(
     conn: aiosqlite.Connection,
     *,

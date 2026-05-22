@@ -253,6 +253,18 @@ _DDL = [
     CREATE VIRTUAL TABLE IF NOT EXISTS daily_ambient_memory_fts
     USING fts5(title, summary, key_items_json, content='daily_ambient_memory', content_rowid='id')
     """,
+    """
+    CREATE TABLE IF NOT EXISTS memory_rolling_state (
+        run_name                    TEXT PRIMARY KEY,
+        last_successful_to_utc      TEXT,
+        last_started_at             TEXT,
+        last_completed_at           TEXT,
+        last_error                  TEXT,
+        lock_owner                  TEXT,
+        lock_expires_utc            TEXT,
+        updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+    """,
 ]
 
 _ALTER = [
