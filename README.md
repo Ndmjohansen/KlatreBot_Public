@@ -55,6 +55,8 @@ MEMORY_ROLLING_ENABLED=true
 MEMORY_ROLLING_RUN_NAME=production
 ```
 
+Set `USER_ALIASES_CONFIG_PATH` as a GitHub repository secret. It should point at the host-local JSON alias file, which must stay outside git.
+
 For direct/manual installs, the same values can be edited in `/etc/klatrebot/klatrebot.env`, but a later CI deploy will replace that file from GitHub secrets and variables.
 
 Rolling updates run through `klatrebot-memory.timer`, which starts `klatrebot-memory.service` every 2 hours. The service reads the same `/etc/klatrebot/klatrebot.env`, compiles only an incremental window, leaves the newest 45 minutes untouched so ongoing conversations are picked up next run, and keeps the bot on the last successful memory if compilation fails.

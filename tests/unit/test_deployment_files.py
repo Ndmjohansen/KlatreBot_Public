@@ -23,6 +23,8 @@ def test_install_and_ci_deploy_memory_systemd_units():
     assert "klatrebot-memory.service" in install
     assert "klatrebot-memory.timer" in install
     assert "systemctl enable --now klatrebot-memory.timer" in install
+    assert "USER_ALIASES_CONFIG_PATH=" in install
     assert "klatrebot-memory.service" in workflow
     assert "klatrebot-memory.timer" in workflow
     assert "systemctl enable --now klatrebot-memory.timer" in workflow
+    assert "USER_ALIASES_CONFIG_PATH=${{ secrets.USER_ALIASES_CONFIG_PATH }}" in workflow

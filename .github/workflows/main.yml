@@ -48,6 +48,7 @@ jobs:
             DISCORD_SANDBOX_CHANNEL_ID=${{ secrets.DISCORD_SANDBOX_CHANNEL_ID }}
             ADMIN_USER_ID=${{ secrets.ADMIN_USER_ID }}
             DB_PATH=/home/Admin/klatrebot-data/klatrebot_v2.db
+            USER_ALIASES_CONFIG_PATH=${{ secrets.USER_ALIASES_CONFIG_PATH }}
             MEMORY_ENABLED=${{ vars.MEMORY_ENABLED || 'false' }}
             MEMORY_ACTIVE_RUN_NAME=${{ vars.MEMORY_ACTIVE_RUN_NAME || 'production' }}
             MEMORY_ROLLING_ENABLED=${{ vars.MEMORY_ROLLING_ENABLED || 'false' }}
