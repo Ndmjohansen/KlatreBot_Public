@@ -151,6 +151,39 @@ async def format_alias_prompt_map(conn: aiosqlite.Connection, *, limit: int = 20
     )
 
 
+async def identity_registry_for_prompt(conn: aiosqlite.Connection, *, limit: int = 200) -> list[dict[str, Any]]:
+    rows = await conn.execute_fetchall(
+        """
+        SELECT ua.discord_user_id, ua.alias, ua.source, COALESCE(u.display_name, '') AS display_name
+        FROM user_aliases ua
+        LEFT JOIN users u ON u.discord_user_id = ua.discord_user_id
+        ORDER BY ua.discord_user_id, ua.source, ua.alias_normalized
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    grouped: dict[int, dict[str, Any]] = {}
+    for user_id, alias, source, display_name in rows:
+        entry = grouped.setdefault(
+            int(user_id),
+            {
+                "discord_user_id": int(user_id),
+                "config_aliases": [],
+                "observed_display_names": [],
+            },
+        )
+        if source == "config":
+            entry["config_aliases"].append(str(alias))
+        else:
+            entry["observed_display_names"].append(str(alias))
+        if display_name:
+            entry["observed_display_names"].append(str(display_name))
+    for entry in grouped.values():
+        entry["config_aliases"] = _dedupe_preserve_order(entry["config_aliases"])
+        entry["observed_display_names"] = _dedupe_preserve_order(entry["observed_display_names"])
+    return list(grouped.values())
+
+
 def _dedupe_preserve_order(values: list[str]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()

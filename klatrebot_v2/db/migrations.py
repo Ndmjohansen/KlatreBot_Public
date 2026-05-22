@@ -254,6 +254,29 @@ _DDL = [
     USING fts5(title, summary, key_items_json, content='daily_ambient_memory', content_rowid='id')
     """,
     """
+    CREATE TABLE IF NOT EXISTS reflection_documents (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        compiler_run_id     INTEGER NOT NULL,
+        name                TEXT NOT NULL,
+        from_utc            TEXT NOT NULL,
+        to_utc              TEXT NOT NULL,
+        model               TEXT NOT NULL,
+        status              TEXT NOT NULL CHECK(status IN ('completed','failed')),
+        error               TEXT,
+        content_markdown    TEXT NOT NULL DEFAULT '',
+        content_hash        TEXT NOT NULL DEFAULT '',
+        input_tokens        INTEGER NOT NULL DEFAULT 0,
+        output_tokens       INTEGER NOT NULL DEFAULT 0,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        completed_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(compiler_run_id) REFERENCES memory_compiler_runs(id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_reflection_documents_latest
+    ON reflection_documents(compiler_run_id, name, status, completed_at, id)
+    """,
+    """
     CREATE TABLE IF NOT EXISTS memory_rolling_state (
         run_name                    TEXT PRIMARY KEY,
         last_successful_to_utc      TEXT,

@@ -3,7 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from klatrebot_v2.db import connection, migrations
-from klatrebot_v2.memory.__main__ import chat_once, main, resolve_run_id
+from klatrebot_v2.memory import store
+from klatrebot_v2.memory.__main__ import _reflection_windows, chat_once, main, resolve_run_id
 
 
 async def test_compile_cli_passes_time_slice_to_compiler(monkeypatch, tmp_path):
@@ -153,6 +154,194 @@ async def test_compile_cli_prints_progress(monkeypatch, tmp_path, capsys):
     assert "Loaded 8 messages." in out
     assert "Built 1 segments." in out
     assert "compiled run 2: april" in out
+
+
+async def test_reflect_cli_persists_and_exports_document(monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "memory.db"
+    output_path = tmp_path / "REFLECTIONS.md"
+    conn = await connection.open(str(db_path))
+    try:
+        await migrations.run(conn)
+        await conn.execute(
+            """
+            INSERT INTO memory_compiler_runs
+                (name, status, prompt_version, compiler_model)
+            VALUES ('production', 'completed', 'test', 'gpt-test')
+            """
+        )
+        await conn.commit()
+    finally:
+        await connection.close(conn)
+
+    called = {}
+    windows = []
+
+    async def fake_generate(conn, *, run_id, run_name, name, from_time, to_time, model, reflector=None, usage=None):
+        called["run_id"] = run_id
+        called["run_name"] = run_name
+        called["name"] = name
+        called["model"] = model
+        windows.append((from_time, to_time))
+        if usage:
+            usage.input_tokens += 12
+            usage.output_tokens += 7
+            usage.total_tokens += 19
+        return SimpleNamespace(document_id=44, content_markdown="# KlatreBot Reflections\n\n## Active People")
+
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.generate_reflection", fake_generate)
+
+    code = await main(
+        [
+            "reflect",
+            "--db",
+            str(db_path),
+            "--run",
+            "production",
+            "--from",
+            "2026-05-01T00:00:00+00:00",
+            "--to",
+            "2026-05-22T00:00:00+00:00",
+            "--model",
+            "gpt-reflect",
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    assert code == 0
+    assert called == {
+        "run_id": 1,
+        "run_name": "production",
+        "name": "social-reflections",
+        "model": "gpt-reflect",
+    }
+    assert windows == [
+        (datetime(2026, 5, 1, tzinfo=timezone.utc), datetime(2026, 5, 8, tzinfo=timezone.utc)),
+        (datetime(2026, 5, 8, tzinfo=timezone.utc), datetime(2026, 5, 15, tzinfo=timezone.utc)),
+        (datetime(2026, 5, 15, tzinfo=timezone.utc), datetime(2026, 5, 22, tzinfo=timezone.utc)),
+    ]
+    exported = output_path.read_text(encoding="utf-8")
+    assert "<!--" in exported
+    assert "memory_run: production" in exported
+    assert "# KlatreBot Reflections" in exported
+    out = capsys.readouterr().out
+    assert "reflected document 44: social-reflections" in out
+    assert "Reflecting window 1/3" in out
+    assert "input_tokens: 36" in out
+
+
+async def test_reflect_cli_uses_mini_default_model(monkeypatch, tmp_path):
+    db_path = tmp_path / "memory.db"
+    conn = await connection.open(str(db_path))
+    try:
+        await migrations.run(conn)
+        await conn.execute(
+            """
+            INSERT INTO memory_compiler_runs
+                (name, status, prompt_version, compiler_model)
+            VALUES ('production', 'completed', 'test', 'gpt-test')
+            """
+        )
+        await conn.commit()
+    finally:
+        await connection.close(conn)
+
+    called = {}
+
+    async def fake_generate(conn, *, run_id, run_name, name, from_time, to_time, model, reflector=None, usage=None):
+        called["model"] = model
+        return SimpleNamespace(document_id=45, content_markdown="# KlatreBot Reflections")
+
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.generate_reflection", fake_generate)
+
+    code = await main(
+        [
+            "reflect",
+            "--db",
+            str(db_path),
+            "--run",
+            "production",
+            "--from",
+            "2026-05-01T00:00:00+00:00",
+            "--to",
+            "2026-05-22T00:00:00+00:00",
+        ]
+    )
+
+    assert code == 0
+    assert called["model"] == "gpt-5.4-mini"
+
+
+async def test_reflect_cli_rebuild_deletes_existing_documents(monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "memory.db"
+    conn = await connection.open(str(db_path))
+    try:
+        await migrations.run(conn)
+        run_id = await store.create_compiler_run(
+            conn,
+            name="production",
+            compiler_model="gpt-test",
+            from_time=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            to_time=datetime(2026, 5, 22, tzinfo=timezone.utc),
+        )
+        await store.insert_reflection_document(
+            conn,
+            compiler_run_id=run_id,
+            name="social-reflections",
+            from_time=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            to_time=datetime(2026, 5, 8, tzinfo=timezone.utc),
+            model="gpt-test",
+            status="completed",
+            error=None,
+            content_markdown="# Old",
+            input_tokens=1,
+            output_tokens=1,
+        )
+    finally:
+        await connection.close(conn)
+
+    async def fake_generate(conn, *, run_id, run_name, name, from_time, to_time, model, reflector=None, usage=None):
+        return SimpleNamespace(document_id=99, content_markdown="# KlatreBot Reflections")
+
+    monkeypatch.setattr("klatrebot_v2.memory.__main__.generate_reflection", fake_generate)
+
+    code = await main(
+        [
+            "reflect",
+            "--db",
+            str(db_path),
+            "--run",
+            "production",
+            "--from",
+            "2026-05-01T00:00:00+00:00",
+            "--to",
+            "2026-05-08T00:00:00+00:00",
+            "--revuild",
+        ]
+    )
+
+    assert code == 0
+    conn = await connection.open(str(db_path))
+    try:
+        rows = await conn.execute_fetchall("SELECT id FROM reflection_documents")
+    finally:
+        await connection.close(conn)
+    assert rows == []
+    assert "Deleted 1 existing reflection document(s)" in capsys.readouterr().out
+
+
+def test_reflection_windows_split_range_into_weekly_chunks():
+    windows = _reflection_windows(
+        from_time=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        to_time=datetime(2026, 5, 17, tzinfo=timezone.utc),
+        chunk_days=7,
+    )
+
+    assert windows == [
+        (datetime(2026, 5, 1, tzinfo=timezone.utc), datetime(2026, 5, 8, tzinfo=timezone.utc)),
+        (datetime(2026, 5, 8, tzinfo=timezone.utc), datetime(2026, 5, 15, tzinfo=timezone.utc)),
+        (datetime(2026, 5, 15, tzinfo=timezone.utc), datetime(2026, 5, 17, tzinfo=timezone.utc)),
+    ]
 
 
 async def test_compile_rolling_noops_when_disabled(monkeypatch, tmp_path, capsys):

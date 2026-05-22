@@ -5,11 +5,19 @@ import json
 import socket
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from klatrebot_v2.db import connection, migrations, user_aliases
 from klatrebot_v2.llm.client import get_client
 from klatrebot_v2.llm.prompt import load_soul
 from klatrebot_v2.memory.compiler import CompilerConfig, compile_run
+from klatrebot_v2.memory.reflections import (
+    DEFAULT_REFLECTION_MODEL,
+    DEFAULT_REFLECTION_NAME,
+    ReflectionUsage,
+    export_markdown_with_metadata,
+    generate_reflection,
+)
 from klatrebot_v2.memory.segmentation import SegmentConfig
 from klatrebot_v2.memory import store
 from klatrebot_v2.memory.store import get_compiler_run_by_name
@@ -24,6 +32,8 @@ async def main(argv: list[str] | None = None) -> int:
         return await _compile(args)
     if args.command == "compile-rolling":
         return await _compile_rolling()
+    if args.command == "reflect":
+        return await _reflect(args)
     if args.command == "chat":
         return await _chat(args)
     parser.print_help()
@@ -152,6 +162,22 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("compile-rolling")
 
+    reflect_parser = sub.add_parser("reflect")
+    reflect_parser.add_argument("--db", required=True)
+    reflect_parser.add_argument("--run", required=True)
+    reflect_parser.add_argument("--from", dest="from_time", required=True)
+    reflect_parser.add_argument("--to", dest="to_time", required=True)
+    reflect_parser.add_argument("--name", default=DEFAULT_REFLECTION_NAME)
+    reflect_parser.add_argument("--model")
+    reflect_parser.add_argument("--output")
+    reflect_parser.add_argument("--chunk-days", type=int, default=7)
+    reflect_parser.add_argument(
+        "--rebuild",
+        "--revuild",
+        action="store_true",
+        help="Delete existing reflection documents for this run/name before generating.",
+    )
+
     chat_parser = sub.add_parser("chat")
     chat_parser.add_argument("--db", required=True)
     chat_parser.add_argument("--run", required=True)
@@ -258,6 +284,67 @@ async def _compile_rolling() -> int:
         await connection.close(conn)
 
 
+async def _reflect(args) -> int:
+    s = get_settings()
+    conn = await connection.open(args.db)
+    usage = ReflectionUsage()
+    try:
+        await migrations.run(conn)
+        await user_aliases.sync_config_aliases(conn, s.user_aliases_config_path)
+        run_id = await resolve_run_id(conn, args.run)
+        run_row = await store.get_compiler_run(conn, run_id)
+        run_name = str(run_row["name"]) if run_row else args.run
+        model = args.model or DEFAULT_REFLECTION_MODEL
+        from_time = _parse_dt(args.from_time)
+        to_time = _parse_dt(args.to_time)
+        windows = _reflection_windows(from_time=from_time, to_time=to_time, chunk_days=args.chunk_days)
+        if args.rebuild:
+            deleted = await store.delete_reflection_documents(conn, run_id=run_id, name=args.name)
+            print(f"Deleted {deleted} existing reflection document(s) for '{args.name}'.", flush=True)
+        result = None
+        for index, (window_from, window_to) in enumerate(windows, start=1):
+            print(
+                f"Reflecting window {index}/{len(windows)}: "
+                f"{window_from.isoformat()} -> {window_to.isoformat()}",
+                flush=True,
+            )
+            result = await generate_reflection(
+                conn,
+                run_id=run_id,
+                run_name=run_name,
+                name=args.name,
+                from_time=window_from,
+                to_time=window_to,
+                model=model,
+                usage=usage,
+            )
+        if result is None:
+            raise ValueError("Reflection time range produced no windows")
+        if args.output:
+            export = export_markdown_with_metadata(
+                content_markdown=result.content_markdown,
+                document_id=result.document_id,
+                run_name=run_name,
+                name=args.name,
+                from_time=from_time,
+                to_time=to_time,
+                model=model,
+                generated_at=_utcnow(),
+            )
+            Path(args.output).write_text(export, encoding="utf-8")
+        print(f"reflected document {result.document_id}: {args.name}")
+        print(
+            "[reflection usage]\n"
+            f"responses_calls: {usage.responses_calls}\n"
+            f"input_tokens: {usage.input_tokens}\n"
+            f"output_tokens: {usage.output_tokens}\n"
+            f"total_tokens: {usage.total_tokens}"
+        )
+        return 0
+    finally:
+        await connection.close(conn)
+
+
 async def _chat(args) -> int:
     conn = await connection.open(args.db)
     try:
@@ -324,6 +411,24 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _reflection_windows(
+    *,
+    from_time: datetime,
+    to_time: datetime,
+    chunk_days: int,
+) -> list[tuple[datetime, datetime]]:
+    if chunk_days <= 0:
+        raise ValueError("--chunk-days must be positive")
+    windows: list[tuple[datetime, datetime]] = []
+    cursor = from_time
+    step = timedelta(days=chunk_days)
+    while cursor < to_time:
+        next_time = min(cursor + step, to_time)
+        windows.append((cursor, next_time))
+        cursor = next_time
+    return windows
 
 
 def _rolling_window(*, now: datetime, state: dict | None, settings) -> tuple[datetime, datetime]:

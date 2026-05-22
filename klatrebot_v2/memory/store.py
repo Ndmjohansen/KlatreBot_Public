@@ -1,4 +1,5 @@
 """SQLite persistence helpers for durable memory."""
+import hashlib
 import json
 from datetime import datetime
 from typing import Any
@@ -120,6 +121,7 @@ async def delete_compiler_run_by_name(conn: aiosqlite.Connection, name: str) -> 
     if not existing:
         return
     run_id = int(existing["id"])
+    await conn.execute("DELETE FROM reflection_documents WHERE compiler_run_id = ?", (run_id,))
     await conn.execute(
         """
         DELETE FROM memory_rollups_fts
@@ -540,6 +542,210 @@ async def list_rollups_for_run(
         """,
         (run_id,),
     )
+
+
+async def reflection_rollups_for_range(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    from_time: datetime,
+    to_time: datetime,
+    limit: int = 40,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT id, period_type, period_start_utc, period_end_utc, title, summary,
+               key_items_json, importance, channel_id
+        FROM memory_rollups
+        WHERE compiler_run_id = ?
+          AND status = 'completed'
+          AND period_end_utc > ?
+          AND period_start_utc < ?
+        ORDER BY period_type DESC, period_start_utc DESC, id DESC
+        LIMIT ?
+        """,
+        (run_id, from_time.isoformat(), to_time.isoformat(), limit),
+    )
+
+
+async def reflection_daily_ambient_for_range(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    from_time: datetime,
+    to_time: datetime,
+    limit: int = 40,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT id, day_start_utc, day_end_utc, title, summary, key_items_json,
+               importance, channel_id
+        FROM daily_ambient_memory
+        WHERE compiler_run_id = ?
+          AND status = 'completed'
+          AND day_end_utc > ?
+          AND day_start_utc < ?
+        ORDER BY day_start_utc DESC, id DESC
+        LIMIT ?
+        """,
+        (run_id, from_time.isoformat(), to_time.isoformat(), limit),
+    )
+
+
+async def reflection_memory_items_for_range(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    from_time: datetime,
+    to_time: datetime,
+    limit: int = 120,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT mi.id, mi.type, mi.subject, mi.text, mi.confidence, mi.importance,
+               mi.speaker_ids_json, mi.created_at_source, mi.last_seen_at_source,
+               cs.start_time_utc, cs.end_time_utc, cs.topic_title
+        FROM memory_items mi
+        JOIN conversation_segments cs ON cs.id = mi.segment_id
+        WHERE mi.compiler_run_id = ?
+          AND COALESCE(mi.created_at_source, cs.start_time_utc) >= ?
+          AND COALESCE(mi.created_at_source, cs.start_time_utc) < ?
+          AND mi.importance IN ('normal','high')
+        ORDER BY
+          CASE mi.importance WHEN 'high' THEN 0 ELSE 1 END,
+          COALESCE(mi.created_at_source, cs.start_time_utc) DESC,
+          mi.id DESC
+        LIMIT ?
+        """,
+        (run_id, from_time.isoformat(), to_time.isoformat(), limit),
+    )
+
+
+async def reflection_user_activity_for_range(
+    conn: aiosqlite.Connection,
+    *,
+    from_time: datetime,
+    to_time: datetime,
+    limit: int = 40,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT
+            m.user_id,
+            COALESCE(u.display_name, '') AS current_display_name,
+            COUNT(*) AS message_count,
+            MIN(m.timestamp_utc) AS first_seen_in_range,
+            MAX(m.timestamp_utc) AS last_seen_in_range,
+            COALESCE(
+                (
+                    SELECT json_group_array(alias)
+                    FROM user_aliases ua
+                    WHERE ua.discord_user_id = m.user_id
+                      AND ua.source = 'config'
+                    ORDER BY ua.alias_normalized
+                ),
+                '[]'
+            ) AS config_aliases_json,
+            COALESCE(
+                (
+                    SELECT json_group_array(alias)
+                    FROM user_aliases ua
+                    WHERE ua.discord_user_id = m.user_id
+                      AND ua.source = 'discord_display'
+                    ORDER BY ua.alias_normalized
+                ),
+                '[]'
+            ) AS observed_display_names_json
+        FROM messages m
+        LEFT JOIN users u ON u.discord_user_id = m.user_id
+        WHERE m.timestamp_utc >= ?
+          AND m.timestamp_utc < ?
+          AND m.is_bot = 0
+        GROUP BY m.user_id, current_display_name
+        ORDER BY message_count DESC, last_seen_in_range DESC
+        LIMIT ?
+        """,
+        (from_time.isoformat(), to_time.isoformat(), limit),
+    )
+
+
+async def insert_reflection_document(
+    conn: aiosqlite.Connection,
+    *,
+    compiler_run_id: int,
+    name: str,
+    from_time: datetime,
+    to_time: datetime,
+    model: str,
+    status: str,
+    error: str | None,
+    content_markdown: str,
+    input_tokens: int,
+    output_tokens: int,
+) -> int:
+    content_hash = hashlib.sha256(content_markdown.encode("utf-8")).hexdigest()
+    cursor = await conn.execute(
+        """
+        INSERT INTO reflection_documents
+            (compiler_run_id, name, from_utc, to_utc, model, status, error,
+             content_markdown, content_hash, input_tokens, output_tokens)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            compiler_run_id,
+            name,
+            from_time.isoformat(),
+            to_time.isoformat(),
+            model,
+            status,
+            error,
+            content_markdown,
+            content_hash,
+            input_tokens,
+            output_tokens,
+        ),
+    )
+    await conn.commit()
+    return int(cursor.lastrowid)
+
+
+async def get_latest_reflection_document(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    name: str,
+) -> dict[str, Any] | None:
+    return await _fetch_one_dict(
+        conn,
+        """
+        SELECT *
+        FROM reflection_documents
+        WHERE compiler_run_id = ?
+          AND name = ?
+          AND status = 'completed'
+        ORDER BY completed_at DESC, id DESC
+        LIMIT 1
+        """,
+        (run_id, name),
+    )
+
+
+async def delete_reflection_documents(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    name: str,
+) -> int:
+    cursor = await conn.execute(
+        "DELETE FROM reflection_documents WHERE compiler_run_id = ? AND name = ?",
+        (run_id, name),
+    )
+    await conn.commit()
+    return int(cursor.rowcount)
 
 
 async def get_rolling_state(conn: aiosqlite.Connection, run_name: str) -> dict[str, Any] | None:
