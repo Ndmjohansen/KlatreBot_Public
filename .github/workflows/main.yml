@@ -48,6 +48,18 @@ jobs:
             DISCORD_SANDBOX_CHANNEL_ID=${{ secrets.DISCORD_SANDBOX_CHANNEL_ID }}
             ADMIN_USER_ID=${{ secrets.ADMIN_USER_ID }}
             DB_PATH=/home/Admin/klatrebot-data/klatrebot_v2.db
+            USER_ALIASES_CONFIG_PATH=${{ secrets.USER_ALIASES_CONFIG_PATH }}
+            MEMORY_ENABLED=${{ vars.MEMORY_ENABLED || 'false' }}
+            MEMORY_ACTIVE_RUN_NAME=${{ vars.MEMORY_ACTIVE_RUN_NAME || 'production' }}
+            MEMORY_COMPILER_MODEL=${{ vars.MEMORY_COMPILER_MODEL || 'gpt-5.4-nano' }}
+            MEMORY_SEGMENT_GAP_MINUTES=${{ vars.MEMORY_SEGMENT_GAP_MINUTES || '30' }}
+            MEMORY_SEGMENT_MIN_HUMAN_MESSAGES=${{ vars.MEMORY_SEGMENT_MIN_HUMAN_MESSAGES || '8' }}
+            MEMORY_SEGMENT_MIN_TOTAL_CHARS=${{ vars.MEMORY_SEGMENT_MIN_TOTAL_CHARS || '300' }}
+            MEMORY_SEGMENT_MIN_PARTICIPANTS=${{ vars.MEMORY_SEGMENT_MIN_PARTICIPANTS || '2' }}
+            MEMORY_SEGMENT_MAX_MESSAGES=${{ vars.MEMORY_SEGMENT_MAX_MESSAGES || '100' }}
+            MEMORY_SEGMENT_MAX_DURATION_MINUTES=${{ vars.MEMORY_SEGMENT_MAX_DURATION_MINUTES || '120' }}
+            MEMORY_ROLLING_ENABLED=${{ vars.MEMORY_ROLLING_ENABLED || 'false' }}
+            MEMORY_ROLLING_RUN_NAME=${{ vars.MEMORY_ROLLING_RUN_NAME || 'production' }}
             EOF
 
             # Ensure DB data dir exists (idempotent)
@@ -66,7 +78,16 @@ jobs:
               -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
               klatrebot.service \
               | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot.service
+            sed \
+              -e "s|@SERVICE_USER@|Admin|g" \
+              -e "s|@PROJECT_DIR@|/home/Admin/KlatreBot/KlatreBot_Public|g" \
+              -e "s|@DATA_DIR@|/home/Admin/klatrebot-data|g" \
+              -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
+              klatrebot-memory.service \
+              | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot-memory.service
+            sudo install -m 644 -o root -g root klatrebot-memory.timer /etc/systemd/system/klatrebot-memory.timer
 
             sudo systemctl daemon-reload
+            sudo systemctl enable --now klatrebot-memory.timer
             sudo systemctl restart klatrebot
             sudo systemctl status klatrebot --no-pager

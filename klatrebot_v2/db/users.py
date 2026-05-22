@@ -1,6 +1,7 @@
 """User upsert + lookup."""
 import aiosqlite
 
+from klatrebot_v2.db import user_aliases
 from klatrebot_v2.db.models import User
 
 
@@ -16,6 +17,12 @@ async def upsert(conn: aiosqlite.Connection, *, discord_user_id: int, display_na
         (discord_user_id, display_name, 1 if is_admin else 0),
     )
     await conn.commit()
+    await user_aliases.upsert_alias(
+        conn,
+        discord_user_id=discord_user_id,
+        alias=display_name,
+        source="discord_display",
+    )
 
 
 async def get(conn: aiosqlite.Connection, discord_user_id: int) -> User | None:

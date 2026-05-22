@@ -6,6 +6,8 @@ set -euo pipefail
 
 SERVICE_NAME="klatrebot"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+MEMORY_SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}-memory.service"
+MEMORY_TIMER_FILE="/etc/systemd/system/${SERVICE_NAME}-memory.timer"
 ENV_DIR="/etc/klatrebot"
 ENV_FILE="${ENV_DIR}/klatrebot.env"
 CRON_FILE="/etc/cron.d/klatrebot-backup"
@@ -65,6 +67,18 @@ DISCORD_MAIN_CHANNEL_ID=0
 DISCORD_SANDBOX_CHANNEL_ID=0
 ADMIN_USER_ID=0
 DB_PATH=${DATA_DIR}/klatrebot_v2.db
+USER_ALIASES_CONFIG_PATH=
+MEMORY_ENABLED=false
+MEMORY_ACTIVE_RUN_NAME=production
+MEMORY_COMPILER_MODEL=gpt-5.4-nano
+MEMORY_SEGMENT_GAP_MINUTES=30
+MEMORY_SEGMENT_MIN_HUMAN_MESSAGES=8
+MEMORY_SEGMENT_MIN_TOTAL_CHARS=300
+MEMORY_SEGMENT_MIN_PARTICIPANTS=2
+MEMORY_SEGMENT_MAX_MESSAGES=100
+MEMORY_SEGMENT_MAX_DURATION_MINUTES=120
+MEMORY_ROLLING_ENABLED=false
+MEMORY_ROLLING_RUN_NAME=production
 EOF
     echo "  Wrote placeholder $ENV_FILE — edit with real values, then re-run: systemctl restart $SERVICE_NAME"
 else
@@ -73,7 +87,8 @@ fi
 
 echo "[4/6] Installing systemd unit"
 TMP_UNIT="$(mktemp)"
-trap 'rm -f "$TMP_UNIT"' EXIT
+TMP_MEMORY_UNIT="$(mktemp)"
+trap 'rm -f "$TMP_UNIT" "$TMP_MEMORY_UNIT"' EXIT
 sed \
     -e "s|@SERVICE_USER@|${TARGET_USER}|g" \
     -e "s|@PROJECT_DIR@|${PROJECT_DIR}|g" \
@@ -81,10 +96,19 @@ sed \
     -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
     "$PROJECT_DIR/klatrebot.service" > "$TMP_UNIT"
 install -m 644 -o root -g root "$TMP_UNIT" "$SERVICE_FILE"
+sed \
+    -e "s|@SERVICE_USER@|${TARGET_USER}|g" \
+    -e "s|@PROJECT_DIR@|${PROJECT_DIR}|g" \
+    -e "s|@DATA_DIR@|${DATA_DIR}|g" \
+    -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
+    "$PROJECT_DIR/klatrebot-memory.service" > "$TMP_MEMORY_UNIT"
+install -m 644 -o root -g root "$TMP_MEMORY_UNIT" "$MEMORY_SERVICE_FILE"
+install -m 644 -o root -g root "$PROJECT_DIR/klatrebot-memory.timer" "$MEMORY_TIMER_FILE"
 
 echo "[5/6] Reloading + enabling systemd unit"
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
+systemctl enable --now klatrebot-memory.timer
 
 echo "[6/6] Installing backup cron"
 for cmd in sqlite3 zip rclone; do
