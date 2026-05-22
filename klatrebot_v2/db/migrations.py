@@ -210,6 +210,49 @@ _DDL = [
     CREATE VIRTUAL TABLE IF NOT EXISTS memory_rollups_fts
     USING fts5(title, summary, key_items_json, content='memory_rollups', content_rowid='id')
     """,
+    """
+    CREATE TABLE IF NOT EXISTS daily_ambient_memory (
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        compiler_run_id             INTEGER NOT NULL,
+        channel_id                  INTEGER NOT NULL,
+        day_start_utc               TEXT NOT NULL,
+        day_end_utc                 TEXT NOT NULL,
+        title                       TEXT NOT NULL DEFAULT '',
+        summary                     TEXT NOT NULL DEFAULT '',
+        key_items_json              TEXT NOT NULL DEFAULT '[]',
+        importance                  TEXT NOT NULL CHECK(importance IN ('low','normal','high')) DEFAULT 'low',
+        status                      TEXT NOT NULL CHECK(status IN ('pending','completed','failed','stale')) DEFAULT 'pending',
+        error                       TEXT,
+        source_fingerprint          TEXT NOT NULL DEFAULT '',
+        created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(compiler_run_id) REFERENCES memory_compiler_runs(id),
+        UNIQUE(compiler_run_id, channel_id, day_start_utc, day_end_utc)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_daily_ambient_run_day ON daily_ambient_memory(compiler_run_id, day_start_utc, day_end_utc)",
+    """
+    CREATE TABLE IF NOT EXISTS daily_ambient_sources (
+        ambient_id          INTEGER NOT NULL,
+        segment_id          INTEGER NOT NULL,
+        PRIMARY KEY(ambient_id, segment_id),
+        FOREIGN KEY(ambient_id) REFERENCES daily_ambient_memory(id),
+        FOREIGN KEY(segment_id) REFERENCES conversation_segments(id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS daily_ambient_tags (
+        ambient_id          INTEGER NOT NULL,
+        tag                 TEXT NOT NULL,
+        PRIMARY KEY(ambient_id, tag),
+        FOREIGN KEY(ambient_id) REFERENCES daily_ambient_memory(id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_daily_ambient_tags_tag ON daily_ambient_tags(tag)",
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS daily_ambient_memory_fts
+    USING fts5(title, summary, key_items_json, content='daily_ambient_memory', content_rowid='id')
+    """,
 ]
 
 _ALTER = [

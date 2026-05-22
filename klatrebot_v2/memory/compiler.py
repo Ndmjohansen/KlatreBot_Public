@@ -51,6 +51,8 @@ class CompileStats:
     segments_summarized: int = 0
     segments_skipped: int = 0
     segments_failed: int = 0
+    daily_ambient_completed: int = 0
+    daily_ambient_failed: int = 0
     weekly_rollups_completed: int = 0
     weekly_rollups_failed: int = 0
     monthly_rollups_completed: int = 0
@@ -189,6 +191,13 @@ async def compile_run(
             concurrency=config.concurrency,
             progress=progress,
             db_lock=db_lock,
+            stats=stats,
+        )
+        await _build_daily_ambient_memory(
+            conn,
+            run_id=run_id,
+            ambient_summarizer=rollup_summarizer,
+            progress=progress,
             stats=stats,
         )
         await _build_rollups(
@@ -410,6 +419,117 @@ async def _build_rollups(
         )
 
 
+async def _build_daily_ambient_memory(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    ambient_summarizer: RollupSummarizer,
+    progress: ProgressCallback | None,
+    stats: CompileStats,
+) -> None:
+    skipped_segments = await store.skipped_segments_for_daily_ambient(conn, run_id)
+    groups: dict[tuple[int, datetime, datetime], list[dict[str, Any]]] = {}
+    for segment in skipped_segments:
+        start = datetime.fromisoformat(segment["start_time_utc"])
+        day_start, day_end = _day_bounds(start)
+        groups.setdefault((int(segment["channel_id"]), day_start, day_end), []).append(segment)
+    if groups:
+        _progress(progress, f"Building {len(groups)} daily ambient memories.")
+    for (channel_id, day_start, day_end), group in sorted(groups.items(), key=lambda entry: (entry[0][1], entry[0][0])):
+        await _build_one_daily_ambient_memory(
+            conn,
+            run_id=run_id,
+            channel_id=channel_id,
+            day_start=day_start,
+            day_end=day_end,
+            segments=group,
+            ambient_summarizer=ambient_summarizer,
+            stats=stats,
+        )
+
+
+async def _build_one_daily_ambient_memory(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    channel_id: int,
+    day_start: datetime,
+    day_end: datetime,
+    segments: list[dict[str, Any]],
+    ambient_summarizer: RollupSummarizer,
+    stats: CompileStats,
+) -> None:
+    sources = [_skipped_segment_source(row) for row in segments]
+    fingerprint = _stable_hash(
+        {
+            "sources": [
+                {
+                    "kind": source["kind"],
+                    "id": source["id"],
+                    "summary": source.get("summary", ""),
+                    "message_count": source.get("message_count", 0),
+                }
+                for source in sources
+            ]
+        }
+    )
+    existing = await store.get_daily_ambient_by_day(
+        conn,
+        run_id=run_id,
+        channel_id=channel_id,
+        day_start_utc=day_start.isoformat(),
+        day_end_utc=day_end.isoformat(),
+    )
+    if existing and existing["status"] == "completed" and existing["source_fingerprint"] == fingerprint:
+        return
+    ambient_input = RollupInput(
+        period_type="daily_ambient",
+        period_start=day_start,
+        period_end=day_end,
+        channel_id=channel_id,
+        sources=sources,
+    )
+    source_segment_ids = [int(segment["id"]) for segment in segments]
+    try:
+        summary = _normalize_rollup_summary(await ambient_summarizer(ambient_input))
+    except Exception as exc:
+        await store.upsert_daily_ambient_memory(
+            conn,
+            run_id=run_id,
+            channel_id=channel_id,
+            day_start_utc=day_start.isoformat(),
+            day_end_utc=day_end.isoformat(),
+            title="",
+            summary="",
+            key_items=[],
+            tags=[],
+            importance="low",
+            status="failed",
+            error=str(exc),
+            source_fingerprint=fingerprint,
+            source_segments=source_segment_ids,
+        )
+        stats.daily_ambient_failed += 1
+        return
+    await store.upsert_daily_ambient_memory(
+        conn,
+        run_id=run_id,
+        channel_id=channel_id,
+        day_start_utc=day_start.isoformat(),
+        day_end_utc=day_end.isoformat(),
+        title=summary.title,
+        summary=summary.summary,
+        key_items=summary.key_items,
+        tags=summary.tags,
+        importance="low",
+        status="completed",
+        error=None,
+        source_fingerprint=fingerprint,
+        source_segments=source_segment_ids,
+    )
+    stats.daily_ambient_completed += 1
+
+
 async def _build_one_rollup(
     conn: aiosqlite.Connection,
     *,
@@ -543,6 +663,8 @@ async def summarize_rollup_with_llm(
 
 
 def _build_rollup_prompt(rollup: RollupInput) -> str:
+    if rollup.period_type == "daily_ambient":
+        return _build_daily_ambient_prompt(rollup)
     schema = {
         "title": "kort dansk titel",
         "summary": "komprimeret dansk opsummering med eksplicit periode og vigtige konkurrerende minder holdt adskilt",
@@ -556,6 +678,27 @@ def _build_rollup_prompt(rollup: RollupInput) -> str:
         "Komprimer hårdt, men bevar tidslig orden, vigtige personer, steder, planer, beslutninger, præferencer og social lore. "
         "Sammenbland ikke lignende minder: nævn konkurrerende datoer/perioder separat. "
         "Skriv tydeligt planned/proposed/confirmed/uncertain på dansk når evidensen er uklar. "
+        "Output skal være gyldig JSON og på dansk.\n\n"
+        f"Returner denne form:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
+        f"KILDER:\n{json.dumps(rollup.sources, ensure_ascii=False)}"
+    )
+
+
+def _build_daily_ambient_prompt(rollup: RollupInput) -> str:
+    schema = {
+        "title": "kort dansk titel",
+        "summary": "kort dansk opsummering af løs daglig chat",
+        "key_items": ["kort dansk punkt med usikkerhed/status når relevant"],
+        "importance": "low",
+        "tags": ["dansk tag", "peak", "social lore"],
+    }
+    return (
+        "Du laver daglig ambient hukommelse for KlatreBot ud fra små/skippede chatstumper.\n"
+        f"Dag: {rollup.period_start.isoformat()} til {rollup.period_end.isoformat()}.\n"
+        "Dette er lav-prioritets baggrundshukommelse, ikke en egentlig samtaleopsummering. "
+        "Bevar løs social tekstur, små links/emner, jokes/lore, lette præferencer og åbne løkker, "
+        "men gør ikke uklare bemærkninger til sikre fakta. "
+        "Skriv tydeligt hvis noget kun er nævnt løst eller usikkert. "
         "Output skal være gyldig JSON og på dansk.\n\n"
         f"Returner denne form:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
         f"KILDER:\n{json.dumps(rollup.sources, ensure_ascii=False)}"
@@ -673,6 +816,19 @@ def _segment_source(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _skipped_segment_source(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "skipped_segment",
+        "id": int(row["id"]),
+        "time_range": f"{row['start_time_utc']} - {row['end_time_utc']}",
+        "message_count": int(row["message_count"]),
+        "human_message_count": int(row["human_message_count"]),
+        "total_chars": int(row["total_chars"]),
+        "participants": json.loads(row.get("participant_ids_json") or "[]"),
+        "skip_reason": row.get("skip_reason"),
+    }
+
+
 def _memory_item_source(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "kind": "memory_item",
@@ -719,6 +875,11 @@ def _month_bounds(value: datetime) -> tuple[datetime, datetime]:
     return start, end
 
 
+def _day_bounds(value: datetime) -> tuple[datetime, datetime]:
+    start = datetime.combine(value.date(), time.min, tzinfo=value.tzinfo)
+    return start, start + timedelta(days=1)
+
+
 def _stable_hash(value: Any) -> str:
     raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -760,6 +921,7 @@ def _report_counts(progress: ProgressCallback | None, stats: CompileStats) -> No
     _progress(
         progress,
         "rollups: "
+        f"daily_ambient_completed={stats.daily_ambient_completed}, daily_ambient_failed={stats.daily_ambient_failed}, "
         f"weekly_completed={stats.weekly_rollups_completed}, weekly_failed={stats.weekly_rollups_failed}, "
         f"monthly_completed={stats.monthly_rollups_completed}, monthly_failed={stats.monthly_rollups_failed}",
     )

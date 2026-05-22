@@ -7,7 +7,12 @@ import pytest
 
 from klatrebot_v2.db import messages as msg_db, users as users_db
 from klatrebot_v2.memory.compiler import CompilerConfig, RollupInput, RollupSummary, SegmentConfig, SegmentSummary, compile_run
-from klatrebot_v2.memory.store import get_compiler_run_by_name, list_rollups_for_run, list_segments_for_run
+from klatrebot_v2.memory.store import (
+    get_compiler_run_by_name,
+    list_daily_ambient_memory_for_run,
+    list_rollups_for_run,
+    list_segments_for_run,
+)
 
 
 async def _noop_rollup_summarizer(rollup):
@@ -520,6 +525,47 @@ async def test_compile_run_builds_weekly_and_monthly_rollups(db):
     rollups = await list_rollups_for_run(db, run_id)
     assert sorted(r["period_type"] for r in rollups) == ["month", "week", "week"]
     assert all(r["status"] == "completed" for r in rollups)
+
+
+async def test_compile_run_builds_daily_ambient_memory_from_skipped_segments(db):
+    await users_db.upsert(db, discord_user_id=10, display_name="Nicklas")
+    base = datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)
+    for i in range(3):
+        await msg_db.insert(
+            db,
+            discord_message_id=i + 1,
+            channel_id=42,
+            user_id=10,
+            content=f"peak loose message {i}",
+            timestamp_utc=base + timedelta(hours=i),
+        )
+
+    ambient_inputs = []
+
+    async def ambient_summarizer(rollup: RollupInput):
+        ambient_inputs.append(rollup)
+        return RollupSummary(
+            title="Daglig ambient hukommelse",
+            summary="Der var løs snak om Peak.",
+            key_items=["Peak blev nævnt i løs daglig chat."],
+            tags=["peak", "spil"],
+            importance="normal",
+        )
+
+    run_id = await compile_run(
+        db,
+        config=CompilerConfig(name="daily-ambient", from_time=base, to_time=base + timedelta(days=1), compiler_model="test"),
+        summarizer=AsyncMock(),
+        rollup_summarizer=ambient_summarizer,
+    )
+
+    ambient_rows = await list_daily_ambient_memory_for_run(db, run_id)
+    assert len(ambient_rows) == 1
+    assert ambient_rows[0]["status"] == "completed"
+    assert ambient_rows[0]["importance"] == "low"
+    assert ambient_rows[0]["summary"] == "Der var løs snak om Peak."
+    assert ambient_inputs[0].period_type == "daily_ambient"
+    assert [source["kind"] for source in ambient_inputs[0].sources] == ["skipped_segment"]
 
 
 async def test_compile_run_marks_rollup_failure_without_aborting(db):

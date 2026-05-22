@@ -189,6 +189,46 @@ async def test_get_memory_sources_resolves_rollup_handles(db):
     assert any("Spanien kunne være fedt" in source.content for source in sources)
 
 
+async def test_recall_searches_daily_ambient_memory_and_resolves_sources(db):
+    await users_db.upsert(db, discord_user_id=10, display_name="Nicklas")
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    for i in range(3):
+        await msg_db.insert(
+            db,
+            discord_message_id=i + 1,
+            channel_id=42,
+            user_id=10,
+            content=f"Peak loose chat {i}",
+            timestamp_utc=base + timedelta(hours=i),
+        )
+
+    async def ambient_summarizer(rollup):
+        return RollupSummary(
+            title="Daglig ambient hukommelse",
+            summary="Løs daglig chat nævnte Peak.",
+            key_items=["Peak blev nævnt i løse beskeder."],
+            tags=["peak", "spil"],
+            importance="normal",
+        )
+
+    run_id = await compile_run(
+        db,
+        config=CompilerConfig(name="ambient-retrieval", from_time=base, to_time=base + timedelta(days=1), compiler_model="test"),
+        summarizer=lambda _segment: SegmentSummary(),
+        rollup_summarizer=ambient_summarizer,
+    )
+
+    recall = await recall_community_memory(db, run_id=run_id, query="peak spil")
+    ambient = next(r for r in recall.results if r.kind == "daily_ambient")
+
+    assert ambient.source_handle.startswith("amb:")
+    assert ambient.importance == "low"
+    assert ambient.matched_tags == ["peak", "spil"]
+
+    sources = await get_memory_sources(db, source_handles=[ambient.source_handle], context_radius=0)
+    assert [source.content for source in sources] == ["Peak loose chat 0", "Peak loose chat 1", "Peak loose chat 2"]
+
+
 async def test_recall_groups_related_memories_by_tag_and_time_window(db):
     await users_db.upsert(db, discord_user_id=10, display_name="Tobi")
     base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)

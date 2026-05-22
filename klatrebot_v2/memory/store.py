@@ -144,6 +144,28 @@ async def delete_compiler_run_by_name(conn: aiosqlite.Connection, name: str) -> 
     await conn.execute("DELETE FROM memory_rollups WHERE compiler_run_id = ?", (run_id,))
     await conn.execute(
         """
+        DELETE FROM daily_ambient_memory_fts
+        WHERE rowid IN (SELECT id FROM daily_ambient_memory WHERE compiler_run_id = ?)
+        """,
+        (run_id,),
+    )
+    await conn.execute(
+        """
+        DELETE FROM daily_ambient_sources
+        WHERE ambient_id IN (SELECT id FROM daily_ambient_memory WHERE compiler_run_id = ?)
+        """,
+        (run_id,),
+    )
+    await conn.execute(
+        """
+        DELETE FROM daily_ambient_tags
+        WHERE ambient_id IN (SELECT id FROM daily_ambient_memory WHERE compiler_run_id = ?)
+        """,
+        (run_id,),
+    )
+    await conn.execute("DELETE FROM daily_ambient_memory WHERE compiler_run_id = ?", (run_id,))
+    await conn.execute(
+        """
         DELETE FROM memory_items_fts
         WHERE rowid IN (SELECT id FROM memory_items WHERE compiler_run_id = ?)
         """,
@@ -452,6 +474,24 @@ async def completed_segments_for_rollups(
     )
 
 
+async def skipped_segments_for_daily_ambient(
+    conn: aiosqlite.Connection,
+    run_id: int,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT id, channel_id, start_time_utc, end_time_utc, message_count,
+               human_message_count, total_chars, participant_ids_json,
+               topic_title, summary, importance, skip_reason
+        FROM conversation_segments
+        WHERE compiler_run_id = ? AND status = 'skipped'
+        ORDER BY channel_id, start_time_utc, id
+        """,
+        (run_id,),
+    )
+
+
 async def memory_items_for_segments(
     conn: aiosqlite.Connection,
     segment_ids: list[int],
@@ -472,6 +512,21 @@ async def memory_items_for_segments(
     )
 
 
+async def list_daily_ambient_memory_for_run(
+    conn: aiosqlite.Connection,
+    run_id: int,
+) -> list[dict[str, Any]]:
+    return await _fetch_all_dicts(
+        conn,
+        """
+        SELECT * FROM daily_ambient_memory
+        WHERE compiler_run_id = ?
+        ORDER BY day_start_utc, channel_id
+        """,
+        (run_id,),
+    )
+
+
 async def list_rollups_for_run(
     conn: aiosqlite.Connection,
     run_id: int,
@@ -485,6 +540,110 @@ async def list_rollups_for_run(
         """,
         (run_id,),
     )
+
+
+async def get_daily_ambient_by_day(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    channel_id: int,
+    day_start_utc: str,
+    day_end_utc: str,
+) -> dict[str, Any] | None:
+    return await _fetch_one_dict(
+        conn,
+        """
+        SELECT * FROM daily_ambient_memory
+        WHERE compiler_run_id = ? AND channel_id = ?
+          AND day_start_utc = ? AND day_end_utc = ?
+        """,
+        (run_id, channel_id, day_start_utc, day_end_utc),
+    )
+
+
+async def upsert_daily_ambient_memory(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    channel_id: int,
+    day_start_utc: str,
+    day_end_utc: str,
+    title: str,
+    summary: str,
+    key_items: list[str],
+    tags: list[str],
+    importance: str,
+    status: str,
+    error: str | None,
+    source_fingerprint: str,
+    source_segments: list[int],
+) -> int:
+    existing = await get_daily_ambient_by_day(
+        conn,
+        run_id=run_id,
+        channel_id=channel_id,
+        day_start_utc=day_start_utc,
+        day_end_utc=day_end_utc,
+    )
+    if existing:
+        ambient_id = int(existing["id"])
+        await conn.execute(
+            """
+            UPDATE daily_ambient_memory
+            SET title = ?, summary = ?, key_items_json = ?, importance = ?,
+                status = ?, error = ?, source_fingerprint = ?, updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (title, summary, json.dumps(key_items, ensure_ascii=False), importance, status, error, source_fingerprint, ambient_id),
+        )
+        await conn.execute("DELETE FROM daily_ambient_memory_fts WHERE rowid = ?", (ambient_id,))
+        await conn.execute("DELETE FROM daily_ambient_sources WHERE ambient_id = ?", (ambient_id,))
+        await conn.execute("DELETE FROM daily_ambient_tags WHERE ambient_id = ?", (ambient_id,))
+    else:
+        cursor = await conn.execute(
+            """
+            INSERT INTO daily_ambient_memory
+                (compiler_run_id, channel_id, day_start_utc, day_end_utc,
+                 title, summary, key_items_json, importance, status, error, source_fingerprint)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                channel_id,
+                day_start_utc,
+                day_end_utc,
+                title,
+                summary,
+                json.dumps(key_items, ensure_ascii=False),
+                importance,
+                status,
+                error,
+                source_fingerprint,
+            ),
+        )
+        ambient_id = int(cursor.lastrowid)
+    await conn.execute(
+        """
+        INSERT INTO daily_ambient_memory_fts(rowid, title, summary, key_items_json)
+        VALUES (?, ?, ?, ?)
+        """,
+        (ambient_id, title, summary, json.dumps(key_items, ensure_ascii=False)),
+    )
+    for segment_id in source_segments:
+        await conn.execute(
+            """
+            INSERT OR IGNORE INTO daily_ambient_sources (ambient_id, segment_id)
+            VALUES (?, ?)
+            """,
+            (ambient_id, segment_id),
+        )
+    for tag in tags:
+        await conn.execute(
+            "INSERT OR IGNORE INTO daily_ambient_tags (ambient_id, tag) VALUES (?, ?)",
+            (ambient_id, tag),
+        )
+    await conn.commit()
+    return ambient_id
 
 
 async def completed_rollups_for_months(

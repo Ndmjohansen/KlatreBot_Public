@@ -27,6 +27,7 @@ class MemoryResult(BaseModel):
     subject: str | None = None
     text: str | None = None
     confidence: str | None = None
+    importance: str | None = None
     time_range: str | None = None
     participants: list[int] = Field(default_factory=list)
     segment_id: int | None = None
@@ -89,6 +90,24 @@ async def recall_community_memory(
                 limit=limit * 3,
             ),
         ]
+    ambient_results = [
+        *await _search_daily_ambient_by_tags(
+            conn,
+            run_id=run_id,
+            tag_terms=tag_terms,
+            channel_id=channel_id,
+            date_range=date_range,
+            limit=limit * 3,
+        ),
+        *await _search_daily_ambient(
+            conn,
+            run_id=run_id,
+            query=query,
+            channel_id=channel_id,
+            date_range=date_range,
+            limit=limit * 3,
+        ),
+    ]
     segment_results = [
         *await _search_segments_by_tags(
             conn,
@@ -132,7 +151,7 @@ async def recall_community_memory(
     item_results = _dedupe_memory_items(_merge_results(item_results))
     item_results = await _attach_related_memories(conn, run_id=run_id, items=item_results)
     results = _rank_results(
-        _merge_results([*rollup_results, *item_results, *segment_results])
+        _merge_results([*rollup_results, *item_results, *ambient_results, *segment_results])
     )[:limit]
     return RecallResult(
         answerable=bool(results),
@@ -159,6 +178,8 @@ async def get_memory_sources(
             message_ids.update(await _memory_item_source_ids(conn, int(raw_id)))
         elif kind == "roll":
             message_ids.update(await _rollup_message_ids(conn, int(raw_id)))
+        elif kind == "amb":
+            message_ids.update(await _daily_ambient_message_ids(conn, int(raw_id)))
 
     expanded_ids: set[int] = set()
     for message_id in message_ids:
@@ -281,6 +302,103 @@ async def _search_rollups_by_tags(
             matched_terms=_matched_terms(tag_terms, _csv_list(row[8])),
             match_source="tag",
             score=_base_score("tag", f"rollup_{row[1]}", importance=row[7]) + len(_csv_list(row[8])) * 10,
+        )
+        for row in rows
+    ]
+
+
+async def _search_daily_ambient(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    query: str,
+    channel_id: int | None,
+    date_range: tuple[datetime | None, datetime | None] | None,
+    limit: int,
+) -> list[MemoryResult]:
+    where = ["dam.compiler_run_id = ?", "dam.status = 'completed'", "daily_ambient_memory_fts MATCH ?"]
+    params: list[Any] = [run_id, _fts_query(query)]
+    if channel_id is not None:
+        where.append("dam.channel_id = ?")
+        params.append(channel_id)
+    _append_date_filter(where, params, "dam.day_start_utc", date_range)
+    params.append(limit)
+    cursor = await conn.execute(
+        f"""
+        SELECT dam.id, dam.title, dam.summary, dam.key_items_json,
+               dam.day_start_utc, dam.day_end_utc, dam.importance
+        FROM daily_ambient_memory_fts
+        JOIN daily_ambient_memory dam ON dam.id = daily_ambient_memory_fts.rowid
+        WHERE {' AND '.join(where)}
+        ORDER BY bm25(daily_ambient_memory_fts)
+        LIMIT ?
+        """,
+        params,
+    )
+    rows = await cursor.fetchall()
+    return [
+        MemoryResult(
+            kind="daily_ambient",
+            source_handle=f"amb:{row[0]}",
+            topic_title=row[1],
+            summary=row[2],
+            text="\n".join(_json_str_list(row[3])),
+            importance=row[6],
+            time_range=f"{row[4]} - {row[5]}",
+            matched_terms=_fts_terms(query),
+            match_source="text",
+            score=_base_score("text", "daily_ambient", importance=row[6]),
+        )
+        for row in rows
+    ]
+
+
+async def _search_daily_ambient_by_tags(
+    conn: aiosqlite.Connection,
+    *,
+    run_id: int,
+    tag_terms: list[str],
+    channel_id: int | None,
+    date_range: tuple[datetime | None, datetime | None] | None,
+    limit: int,
+) -> list[MemoryResult]:
+    if not tag_terms:
+        return []
+    where = ["dam.compiler_run_id = ?", "dam.status = 'completed'", f"dat.tag IN ({_placeholders(tag_terms)})"]
+    params: list[Any] = [run_id, *tag_terms]
+    if channel_id is not None:
+        where.append("dam.channel_id = ?")
+        params.append(channel_id)
+    _append_date_filter(where, params, "dam.day_start_utc", date_range)
+    params.append(limit)
+    cursor = await conn.execute(
+        f"""
+        SELECT dam.id, dam.title, dam.summary, dam.key_items_json,
+               dam.day_start_utc, dam.day_end_utc, dam.importance,
+               group_concat(dat.tag)
+        FROM daily_ambient_memory dam
+        JOIN daily_ambient_tags dat ON dat.ambient_id = dam.id
+        WHERE {' AND '.join(where)}
+        GROUP BY dam.id
+        ORDER BY COUNT(DISTINCT dat.tag) DESC, dam.day_start_utc DESC
+        LIMIT ?
+        """,
+        params,
+    )
+    rows = await cursor.fetchall()
+    return [
+        MemoryResult(
+            kind="daily_ambient",
+            source_handle=f"amb:{row[0]}",
+            topic_title=row[1],
+            summary=row[2],
+            text="\n".join(_json_str_list(row[3])),
+            importance=row[6],
+            time_range=f"{row[4]} - {row[5]}",
+            matched_tags=_csv_list(row[7]),
+            matched_terms=_matched_terms(tag_terms, _csv_list(row[7])),
+            match_source="tag",
+            score=_base_score("tag", "daily_ambient", importance=row[6]) + len(_csv_list(row[7])) * 10,
         )
         for row in rows
     ]
@@ -651,7 +769,13 @@ def _base_score(
     memory_type: str | None = None,
 ) -> float:
     source_score = 100.0 if match_source == "tag" else 20.0
-    kind_score = {"rollup_month": 35.0, "rollup_week": 30.0, "memory_item": 15.0, "segment_summary": 5.0}.get(kind, 0.0)
+    kind_score = {
+        "rollup_month": 35.0,
+        "rollup_week": 30.0,
+        "memory_item": 15.0,
+        "segment_summary": 5.0,
+        "daily_ambient": 2.0,
+    }.get(kind, 0.0)
     importance_score = {"high": 8.0, "normal": 4.0, "low": 0.0}.get(importance, 0.0)
     type_score = {"decision": 4.0, "plan": 4.0, "preference": 2.0, "fact": 2.0}.get(memory_type or "", 0.0)
     return source_score + kind_score + importance_score + type_score
@@ -820,6 +944,22 @@ async def _rollup_message_ids(conn: aiosqlite.Connection, rollup_id: int, seen: 
             out.update(await _memory_item_source_ids(conn, int(source_id)))
         elif source_kind == "rollup":
             out.update(await _rollup_message_ids(conn, int(source_id), seen))
+    return sorted(out)
+
+
+async def _daily_ambient_message_ids(conn: aiosqlite.Connection, ambient_id: int) -> list[int]:
+    rows = await conn.execute_fetchall(
+        """
+        SELECT segment_id
+        FROM daily_ambient_sources
+        WHERE ambient_id = ?
+        ORDER BY segment_id
+        """,
+        (ambient_id,),
+    )
+    out: set[int] = set()
+    for row in rows:
+        out.update(await _segment_message_ids(conn, int(row[0])))
     return sorted(out)
 
 
