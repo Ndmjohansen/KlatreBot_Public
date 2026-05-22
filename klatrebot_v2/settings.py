@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     memory_compiler_model: str = "gpt-5.4-mini"
     memory_segment_gap_minutes: int = 30
     memory_segment_min_human_messages: int = 8
-    memory_segment_min_total_chars: int = 500
-    memory_segment_min_participants: int = 3
+    memory_segment_min_total_chars: int = 300
+    memory_segment_min_participants: int = 2
     memory_segment_max_messages: int = 100
     memory_segment_max_duration_minutes: int = 120
     memory_rolling_enabled: bool = False
