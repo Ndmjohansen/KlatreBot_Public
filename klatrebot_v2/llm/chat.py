@@ -135,7 +135,7 @@ async def reply(
         text={"verbosity": "medium"},
         include=["web_search_call.action.sources"],
     )
-    for _ in range(4):
+    for _ in range(8):
         if memory_run_id is None:
             break
         tool_outputs = []

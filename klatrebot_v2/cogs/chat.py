@@ -36,6 +36,9 @@ class ChatCog(commands.Cog):
         text = result.text
         if result.sources:
             text += f"\n\n_Kilder: {', '.join(result.sources[:3])}_"
+        if not text.strip():
+            logger.warning("llm.reply empty text user_id=%d", ctx.author.id)
+            text = "Jeg kunne ikke finde på et svar. Prøv igen."
         await ctx.reply(
             text,
             allowed_mentions=discord.AllowedMentions(
