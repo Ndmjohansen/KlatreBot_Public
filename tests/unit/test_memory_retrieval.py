@@ -304,3 +304,209 @@ async def test_related_memories_exclude_items_outside_default_window(db):
     result = await recall_community_memory(db, run_id=run_id, query="Udendørs plan 1", limit=1)
 
     assert result.results[0].related_memories == []
+
+
+async def test_recall_prefers_tag_matches_over_noisy_fts_hits(db):
+    await users_db.upsert(db, discord_user_id=10, display_name="Benzon")
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    for i in range(8):
+        await msg_db.insert(
+            db,
+            discord_message_id=i + 1,
+            channel_id=42,
+            user_id=10,
+            content=f"cyberpunk besked {i}",
+            timestamp_utc=base + timedelta(minutes=i),
+        )
+    for i in range(8):
+        await msg_db.insert(
+            db,
+            discord_message_id=i + 9,
+            channel_id=42,
+            user_id=10,
+            content=f"gaming sofa besked {i}",
+            timestamp_utc=base + timedelta(hours=1, minutes=i),
+        )
+
+    call_count = 0
+
+    async def summarizer(_segment):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return SegmentSummary(
+                topic_title="Cyberpunk",
+                summary="Der blev talt om Cyberpunk.",
+                importance="normal",
+                tags=["gaming", "cyberpunk"],
+                memory_items=[
+                    {
+                        "type": "opinion",
+                        "subject": "Cyberpunk",
+                        "text": "Cyberpunk blev gennemført, og DLC'en var god.",
+                        "confidence": "high",
+                        "importance": "normal",
+                        "tags": ["gaming", "cyberpunk"],
+                        "source_message_ids": [1],
+                    }
+                ],
+            )
+        return SegmentSummary(
+            topic_title="Sofa",
+            summary="Der blev talt om sofa.",
+            importance="normal",
+            tags=["sofa"],
+            memory_items=[
+                {
+                    "type": "plan",
+                    "subject": "sofa",
+                    "text": "Benzon vil lave et gaming-forsøg på sofaen.",
+                    "confidence": "high",
+                    "importance": "normal",
+                    "tags": ["sofa"],
+                    "source_message_ids": [9],
+                }
+            ],
+        )
+
+    run_id = await compile_run(
+        db,
+        config=CompilerConfig(name="tag-first", from_time=base, to_time=base + timedelta(hours=2), compiler_model="test"),
+        summarizer=summarizer,
+        rollup_summarizer=_rollup_summarizer,
+    )
+
+    result = await recall_community_memory(db, run_id=run_id, query="gaming for nyligt", limit=4)
+    item_texts = [r.text for r in result.results if r.kind == "memory_item"]
+
+    assert item_texts.index("Cyberpunk blev gennemført, og DLC'en var god.") < item_texts.index(
+        "Benzon vil lave et gaming-forsøg på sofaen."
+    )
+    cyberpunk = next(r for r in result.results if r.text == "Cyberpunk blev gennemført, og DLC'en var god.")
+    assert cyberpunk.match_source == "tag"
+    assert cyberpunk.matched_tags == ["gaming"]
+    assert cyberpunk.score is not None
+
+
+async def test_tag_search_respects_channel_type_date_and_people_filters(db):
+    await users_db.upsert(db, discord_user_id=10, display_name="Benzon")
+    await users_db.upsert(db, discord_user_id=20, display_name="Simon")
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    message_id = 1
+    for channel_id, user_id, offset_days in [(42, 10, 0), (99, 10, 0), (42, 20, 20)]:
+        for i in range(8):
+            await msg_db.insert(
+                db,
+                discord_message_id=message_id,
+                channel_id=channel_id,
+                user_id=user_id,
+                content=f"spil besked {message_id}",
+                timestamp_utc=base + timedelta(days=offset_days, minutes=i, hours=channel_id),
+            )
+            message_id += 1
+
+    async def summarizer(segment):
+        speaker_id = segment.messages[0].user_id
+        return SegmentSummary(
+            topic_title=f"Segment {segment.channel_id}",
+            summary="Der blev talt om noget spilrelateret.",
+            importance="normal",
+            tags=["gaming"],
+            memory_items=[
+                {
+                    "type": "preference" if segment.channel_id == 99 else "opinion",
+                    "subject": str(speaker_id),
+                    "text": f"Tag-only memory fra kanal {segment.channel_id} og bruger {speaker_id}.",
+                    "confidence": "high",
+                    "importance": "normal",
+                    "tags": ["gaming"],
+                    "speaker_ids": [speaker_id],
+                    "source_message_ids": [segment.messages[0].discord_message_id],
+                }
+            ],
+        )
+
+    run_id = await compile_run(
+        db,
+        config=CompilerConfig(name="tag-filters", from_time=base, to_time=base + timedelta(days=30), compiler_model="test"),
+        summarizer=summarizer,
+        rollup_summarizer=_rollup_summarizer,
+    )
+
+    result = await recall_community_memory(
+        db,
+        run_id=run_id,
+        query="gaming",
+        channel_id=42,
+        memory_types=["opinion"],
+        people=[10],
+        date_range=(base, base + timedelta(days=2)),
+    )
+
+    item_texts = [r.text for r in result.results if r.kind == "memory_item"]
+    assert item_texts == ["Tag-only memory fra kanal 42 og bruger 10."]
+
+
+async def test_tag_and_text_matches_merge_into_one_result(db):
+    run_id = await _compile_spanien_run(db)
+
+    result = await recall_community_memory(db, run_id=run_id, query="Spanien")
+    matches = [r for r in result.results if r.kind == "memory_item" and r.subject == "Spanien"]
+
+    assert len(matches) == 1
+    assert matches[0].match_source == "both"
+    assert matches[0].matched_tags == ["spanien"]
+
+
+async def test_recall_collapses_likely_duplicate_memory_items(db):
+    await users_db.upsert(db, discord_user_id=10, display_name="Benzon")
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    for i in range(8):
+        await msg_db.insert(
+            db,
+            discord_message_id=i + 1,
+            channel_id=42,
+            user_id=10,
+            content=f"sofa gaming besked {i}",
+            timestamp_utc=base + timedelta(minutes=i),
+        )
+
+    async def summarizer(_segment):
+        return SegmentSummary(
+            topic_title="Sofa gaming",
+            summary="Der blev talt om gaming på sofaen.",
+            importance="normal",
+            tags=["gaming", "sofa"],
+            memory_items=[
+                {
+                    "type": "plan",
+                    "subject": "sofaen og gaming",
+                    "text": "Benzon vil lave et forsøg med at game på sofaen.",
+                    "confidence": "high",
+                    "importance": "normal",
+                    "tags": ["gaming", "sofa"],
+                    "source_message_ids": [1],
+                },
+                {
+                    "type": "plan",
+                    "subject": "klatrebot-brugere (Benzon)",
+                    "text": "Der er et forsøg på at game på sofaen for Benzon.",
+                    "confidence": "high",
+                    "importance": "normal",
+                    "tags": ["gaming", "sofa"],
+                    "source_message_ids": [1],
+                },
+            ],
+        )
+
+    run_id = await compile_run(
+        db,
+        config=CompilerConfig(name="duplicate-tag-results", from_time=base, to_time=base + timedelta(hours=1), compiler_model="test"),
+        summarizer=summarizer,
+        rollup_summarizer=_rollup_summarizer,
+    )
+
+    result = await recall_community_memory(db, run_id=run_id, query="gaming sofa", limit=5)
+    item_results = [r for r in result.results if r.kind == "memory_item"]
+
+    assert len(item_results) == 1
