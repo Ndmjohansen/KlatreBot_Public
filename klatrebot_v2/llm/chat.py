@@ -1,4 +1,5 @@
 """Discord-decoupled LLM call pipeline."""
+import json
 import re
 from typing import Callable
 
@@ -17,7 +18,9 @@ def _resolve_mentions(text: str, names: dict[int, str]) -> str:
 from klatrebot_v2.settings import get_settings
 from klatrebot_v2.llm.client import get_client
 from klatrebot_v2.llm.prompt import load_soul
-from klatrebot_v2.db import messages as msg_db, users as users_db
+from klatrebot_v2.db import messages as msg_db, user_aliases, users as users_db
+from klatrebot_v2.memory import tools as memory_tools
+from klatrebot_v2.memory.store import get_compiler_run_by_name
 
 
 async def _names_for_ids(conn, ids: set[int]) -> dict[int, str]:
@@ -45,6 +48,23 @@ def _extract_sources(resp) -> list[str]:
                 return []
             return [getattr(s, "url", "") for s in sources if getattr(s, "url", None)]
     return []
+
+
+def _extract_function_calls(resp) -> list[dict]:
+    calls = []
+    for item in getattr(resp, "output", None) or []:
+        if getattr(item, "type", None) != "function_call":
+            continue
+        raw_args = getattr(item, "arguments", "{}") or "{}"
+        arguments = raw_args if isinstance(raw_args, dict) else json.loads(raw_args)
+        calls.append(
+            {
+                "name": getattr(item, "name"),
+                "call_id": getattr(item, "call_id"),
+                "arguments": arguments,
+            }
+        )
+    return calls
 
 
 # Bot.setup_hook injects the live aiosqlite.Connection here. Tests monkeypatch.
@@ -89,24 +109,72 @@ async def reply(
         if names
         else "(none)"
     )
+    memory_run_id = await _active_memory_run_id(conn, s) if s.memory_enabled else None
+    alias_map = await user_aliases.format_alias_prompt_map(conn) if memory_run_id is not None else "(memory disabled)"
 
     full_input = (
         f"{soul}\n\n"
         f"CONTEXT (recent chat):\n{context_block}\n\n"
         f"Asking user Discord ID: {asking_user_id}\n\n"
+        f"CHANNEL_ID: {channel_id}\n\n"
         f"MENTION_TOKENS (use exact token to ping a user):\n{mention_tokens}\n\n"
+        f"KNOWN_USER_ALIASES:\n{alias_map}\n"
+        "Use people_names in memory tool calls for these aliases.\n\n"
         f"QUESTION: {resolved_question}"
     )
     client = get_client()
+    tools = [{"type": "web_search"}]
+    if memory_run_id is not None:
+        tools.extend(memory_tools.MEMORY_TOOL_DEFS)
+
     resp = await client.responses.create(
         model=s.model,
         input=full_input,
-        tools=[{"type": "web_search"}],
+        tools=tools,
         reasoning={"effort": "medium"},
         text={"verbosity": "medium"},
         include=["web_search_call.action.sources"],
     )
+    for _ in range(4):
+        if memory_run_id is None:
+            break
+        tool_outputs = []
+        for call in _extract_function_calls(resp):
+            arguments = dict(call["arguments"])
+            if call["name"] == "recall_community_memory" and "channel_id" not in arguments:
+                arguments["channel_id"] = channel_id
+            output = await memory_tools.execute_memory_tool(
+                conn,
+                run_id=memory_run_id,
+                name=call["name"],
+                arguments=arguments,
+            )
+            tool_outputs.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call["call_id"],
+                    "output": output,
+                }
+            )
+        if not tool_outputs:
+            break
+        resp = await client.responses.create(
+            model=s.model,
+            input=tool_outputs,
+            tools=tools,
+            previous_response_id=getattr(resp, "id"),
+            reasoning={"effort": "medium"},
+            text={"verbosity": "medium"},
+            include=["web_search_call.action.sources"],
+        )
     return ChatReply(text=resp.output_text or "", sources=_extract_sources(resp))
+
+
+async def _active_memory_run_id(conn, settings) -> int | None:
+    if settings.memory_active_run_name:
+        found = await get_compiler_run_by_name(conn, settings.memory_active_run_name)
+        return int(found["id"]) if found else None
+    return settings.memory_active_run_id
 
 
 _SUMMARY_INSTRUCTIONS = """

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run KlatreBot rolling memory compiler every 2 hours
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=120min
+Persistent=true
+Unit=klatrebot-memory.service
+
+[Install]
+WantedBy=timers.target

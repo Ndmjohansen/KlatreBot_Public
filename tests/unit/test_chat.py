@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 
@@ -78,6 +79,240 @@ async def test_reply_includes_recent_context(monkeypatch, tmp_path, fake_respons
     call_kwargs = fake_client.responses.create.await_args.kwargs
     assert "Magnus: første" in call_kwargs["input"]
     assert "Magnus: anden" in call_kwargs["input"]
+
+
+async def test_reply_executes_memory_tool_when_enabled(monkeypatch, tmp_path, db):
+    soul = tmp_path / "SOUL.MD"
+    soul.write_text("Soul.")
+    monkeypatch.setenv("DISCORD_KEY", "x"); monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1"); monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3"); monkeypatch.setenv("SOUL_PATH", str(soul))
+    monkeypatch.setenv("MEMORY_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ACTIVE_RUN_ID", "7")
+
+    first = MagicMock()
+    first.id = "resp_1"
+    first.output_text = ""
+    first.output = [
+        SimpleNamespace(
+            type="function_call",
+            name="recall_community_memory",
+            call_id="call_1",
+            arguments='{"query":"Spanien"}',
+        )
+    ]
+    second = MagicMock()
+    second.output_text = "Vi har snakket om Spanien."
+    second.output = []
+
+    from klatrebot_v2.llm import chat, client, prompt
+    from klatrebot_v2.memory import tools as memory_tools
+    from klatrebot_v2.settings import get_settings
+    client._client = None
+    prompt.load_soul.cache_clear()
+    get_settings.cache_clear()
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(side_effect=[first, second])
+    monkeypatch.setattr(client, "_client", fake_client)
+    monkeypatch.setattr(chat, "_get_db_conn", lambda: db)
+
+    async def fake_execute(conn, *, run_id, name, arguments):
+        assert conn is db
+        assert run_id == 7
+        assert name == "recall_community_memory"
+        assert arguments == {"query": "Spanien", "channel_id": 42}
+        return '{"answerable": true, "results": [{"text": "Spanien er på listen"}]}'
+
+    monkeypatch.setattr(memory_tools, "execute_memory_tool", fake_execute)
+
+    result = await chat.reply(question="hvad sagde vi om Spanien?", asking_user_id=99, channel_id=42)
+
+    assert result.text == "Vi har snakket om Spanien."
+    assert fake_client.responses.create.await_count == 2
+    first_call = fake_client.responses.create.await_args_list[0].kwargs
+    assert any(tool.get("name") == "recall_community_memory" for tool in first_call["tools"])
+    second_call = fake_client.responses.create.await_args_list[1].kwargs
+    assert second_call["previous_response_id"] == "resp_1"
+    assert second_call["input"] == [
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": '{"answerable": true, "results": [{"text": "Spanien er på listen"}]}',
+        }
+    ]
+
+
+async def test_reply_defaults_memory_recall_to_current_channel(monkeypatch, tmp_path, db):
+    soul = tmp_path / "SOUL.MD"
+    soul.write_text("Soul.")
+    monkeypatch.setenv("DISCORD_KEY", "x"); monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1"); monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3"); monkeypatch.setenv("SOUL_PATH", str(soul))
+    monkeypatch.setenv("MEMORY_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ACTIVE_RUN_ID", "7")
+
+    first = MagicMock(id="resp_1", output_text="")
+    first.output = [
+        SimpleNamespace(
+            type="function_call",
+            name="recall_community_memory",
+            call_id="call_1",
+            arguments='{"query":"Spanien"}',
+        )
+    ]
+    second = MagicMock(output_text="Vi har snakket om Spanien.", output=[])
+
+    from klatrebot_v2.llm import chat, client, prompt
+    from klatrebot_v2.memory import tools as memory_tools
+    from klatrebot_v2.settings import get_settings
+    client._client = None
+    prompt.load_soul.cache_clear()
+    get_settings.cache_clear()
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(side_effect=[first, second])
+    monkeypatch.setattr(client, "_client", fake_client)
+    monkeypatch.setattr(chat, "_get_db_conn", lambda: db)
+    calls = []
+
+    async def fake_execute(conn, *, run_id, name, arguments):
+        calls.append((name, arguments))
+        return '{"answerable": true}'
+
+    monkeypatch.setattr(memory_tools, "execute_memory_tool", fake_execute)
+
+    await chat.reply(question="hvad sagde vi om Spanien?", asking_user_id=99, channel_id=42)
+
+    assert "CHANNEL_ID: 42" in fake_client.responses.create.await_args_list[0].kwargs["input"]
+    assert calls == [("recall_community_memory", {"query": "Spanien", "channel_id": 42})]
+
+
+async def test_reply_includes_known_user_aliases_when_memory_enabled(monkeypatch, tmp_path, db):
+    soul = tmp_path / "SOUL.MD"
+    soul.write_text("Soul.")
+    monkeypatch.setenv("DISCORD_KEY", "x"); monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1"); monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3"); monkeypatch.setenv("SOUL_PATH", str(soul))
+    monkeypatch.setenv("MEMORY_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ACTIVE_RUN_ID", "7")
+
+    from klatrebot_v2.db import user_aliases
+    await user_aliases.upsert_alias(db, discord_user_id=42, alias="Tobi", source="config")
+    await user_aliases.upsert_alias(db, discord_user_id=42, alias="Tobias", source="config")
+
+    from klatrebot_v2.llm import chat, client, prompt
+    from klatrebot_v2.settings import get_settings
+    client._client = None
+    prompt.load_soul.cache_clear()
+    get_settings.cache_clear()
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(return_value=MagicMock(output_text="ok", output=[]))
+    monkeypatch.setattr(client, "_client", fake_client)
+    monkeypatch.setattr(chat, "_get_db_conn", lambda: db)
+
+    await chat.reply(question="hvad med Tobi?", asking_user_id=99, channel_id=42)
+
+    call_kwargs = fake_client.responses.create.await_args.kwargs
+    assert "KNOWN_USER_ALIASES:" in call_kwargs["input"]
+    assert "Tobi / Tobias -> 42" in call_kwargs["input"]
+
+
+async def test_reply_executes_multiple_memory_tool_rounds(monkeypatch, tmp_path, db):
+    soul = tmp_path / "SOUL.MD"
+    soul.write_text("Soul.")
+    monkeypatch.setenv("DISCORD_KEY", "x"); monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1"); monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3"); monkeypatch.setenv("SOUL_PATH", str(soul))
+    monkeypatch.setenv("MEMORY_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ACTIVE_RUN_ID", "7")
+
+    first = MagicMock(id="resp_1", output_text="")
+    first.output = [
+        SimpleNamespace(type="function_call", name="recall_community_memory", call_id="call_1", arguments='{"query":"Spanien"}')
+    ]
+    second = MagicMock(id="resp_2", output_text="")
+    second.output = [
+        SimpleNamespace(type="function_call", name="get_memory_sources", call_id="call_2", arguments='{"source_handles":["mem:1"]}')
+    ]
+    third = MagicMock(id="resp_3", output_text="Kilde: Nicklas skrev om Spanien.")
+    third.output = []
+
+    from klatrebot_v2.llm import chat, client, prompt
+    from klatrebot_v2.memory import tools as memory_tools
+    from klatrebot_v2.settings import get_settings
+    client._client = None
+    prompt.load_soul.cache_clear()
+    get_settings.cache_clear()
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(side_effect=[first, second, third])
+    monkeypatch.setattr(client, "_client", fake_client)
+    monkeypatch.setattr(chat, "_get_db_conn", lambda: db)
+
+    calls = []
+
+    async def fake_execute(conn, *, run_id, name, arguments):
+        calls.append((name, arguments))
+        return '{"ok": true}'
+
+    monkeypatch.setattr(memory_tools, "execute_memory_tool", fake_execute)
+
+    result = await chat.reply(question="hvor har du Spanien fra?", asking_user_id=99, channel_id=42)
+
+    assert result.text == "Kilde: Nicklas skrev om Spanien."
+    assert calls == [
+        ("recall_community_memory", {"query": "Spanien", "channel_id": 42}),
+        ("get_memory_sources", {"source_handles": ["mem:1"]}),
+    ]
+    assert fake_client.responses.create.await_count == 3
+
+
+async def test_reply_resolves_active_memory_run_by_name(monkeypatch, tmp_path, db):
+    soul = tmp_path / "SOUL.MD"
+    soul.write_text("Soul.")
+    monkeypatch.setenv("DISCORD_KEY", "x")
+    monkeypatch.setenv("OPENAI_KEY", "x")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1")
+    monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
+    monkeypatch.setenv("ADMIN_USER_ID", "3")
+    monkeypatch.setenv("SOUL_PATH", str(soul))
+    monkeypatch.setenv("MEMORY_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_ACTIVE_RUN_NAME", "production")
+
+    response = MagicMock(id="resp_1", output_text="ok")
+    response.output = [
+        SimpleNamespace(type="function_call", name="recall_community_memory", call_id="call_1", arguments='{"query":"Spanien"}')
+    ]
+    final = MagicMock(id="resp_2", output_text="Spanien.")
+    final.output = []
+
+    from klatrebot_v2.llm import chat, client, prompt
+    from klatrebot_v2.memory import tools as memory_tools
+    from klatrebot_v2.settings import get_settings
+    client._client = None
+    prompt.load_soul.cache_clear()
+    get_settings.cache_clear()
+    fake_client = MagicMock()
+    fake_client.responses = MagicMock()
+    fake_client.responses.create = AsyncMock(side_effect=[response, final])
+    monkeypatch.setattr(client, "_client", fake_client)
+    monkeypatch.setattr(chat, "_get_db_conn", lambda: db)
+    monkeypatch.setattr(chat, "get_compiler_run_by_name", AsyncMock(return_value={"id": 33}))
+
+    calls = []
+
+    async def fake_execute(conn, *, run_id, name, arguments):
+        calls.append((run_id, name, arguments))
+        return '{"ok": true}'
+
+    monkeypatch.setattr(memory_tools, "execute_memory_tool", fake_execute)
+
+    result = await chat.reply(question="hvad med Spanien?", asking_user_id=99, channel_id=42)
+
+    assert result.text == "Spanien."
+    assert calls == [(33, "recall_community_memory", {"query": "Spanien", "channel_id": 42})]
 
 
 def test_extract_sources_from_response():

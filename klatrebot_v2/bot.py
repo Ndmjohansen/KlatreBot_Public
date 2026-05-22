@@ -6,7 +6,7 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from klatrebot_v2.db import connection, migrations
+from klatrebot_v2.db import connection, migrations, user_aliases
 from klatrebot_v2.settings import get_settings
 
 
@@ -27,6 +27,7 @@ class KlatreBot(commands.Bot):
         # Open DB and run migrations
         self.db_conn = await connection.open(s.db_path)
         await migrations.run(self.db_conn)
+        await user_aliases.sync_config_aliases(self.db_conn, s.user_aliases_config_path)
         from klatrebot_v2.llm import chat as llm_chat
         llm_chat.set_db_conn_provider(lambda: self.db_conn)
         # Register cogs
