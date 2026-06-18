@@ -50,11 +50,21 @@ DEFAULT_KLATRETID_DESCRIPTION = "@everyone Hva sker der? er i.. er i glar?\n"
 KLATRETID_GIF_URL = "https://i.imgur.com/9uMGPae.gif"
 
 
-def build_klatretid_embed(*, description: str | None = None) -> discord.Embed:
-    embed = discord.Embed(
-        title="Klatretid!",
-        description=description or DEFAULT_KLATRETID_DESCRIPTION,
-    )
+def seasonal_location_for(weekday: int) -> str | None:
+    """Climbing location for a weekday when seasonal mode is on, else None."""
+    s = get_settings()
+    if not s.seasonal_enabled:
+        return None
+    return s.seasonal_locations.get(weekday)
+
+
+def build_klatretid_embed(
+    *, description: str | None = None, location: str | None = None
+) -> discord.Embed:
+    body = description or DEFAULT_KLATRETID_DESCRIPTION
+    if location:
+        body = f"{body}\nLokation: {location}"
+    embed = discord.Embed(title="Klatretid!", description=body)
     embed.set_image(url=KLATRETID_GIF_URL)
     return embed
 
@@ -67,7 +77,8 @@ async def post_klatretid_embed_in(
 ) -> None:
     """Post klatretid embed + create attendance session in `channel`."""
     s = get_settings()
-    embed = build_klatretid_embed()
+    location = seasonal_location_for(post_time_local.weekday())
+    embed = build_klatretid_embed(location=location)
     msg = await channel.send(embed=embed)
     await msg.add_reaction("✅")
     await msg.add_reaction("❌")

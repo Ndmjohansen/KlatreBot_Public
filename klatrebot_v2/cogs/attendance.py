@@ -12,10 +12,17 @@ from klatrebot_v2.tasks import (
     DEFAULT_KLATRETID_DESCRIPTION,
     build_klatretid_embed,
     post_klatretid_embed_in,
+    seasonal_location_for,
 )
 
 
 logger = logging.getLogger(__name__)
+
+
+def _location_for_session_date(date_local: str) -> str | None:
+    """Seasonal location for a session's local date string (YYYY-MM-DD)."""
+    weekday = datetime.strptime(date_local, "%Y-%m-%d").weekday()
+    return seasonal_location_for(weekday)
 
 
 def _today_local_str() -> str:
@@ -107,8 +114,9 @@ class AttendanceCog(commands.Cog):
         yes, no = await att_db.tally(self.bot.db_conn, session_id=sess.id)
         bailers = await att_db.bailers(self.bot.db_conn, session_id=sess.id)
         bailer_ids = {u.discord_user_id for u in bailers}
+        location = _location_for_session_date(sess.date_local)
         if not yes and not no:
-            embed = build_klatretid_embed()
+            embed = build_klatretid_embed(location=location)
         else:
             yes_names = ", ".join(
                 (f"{u.display_name} 🐔" if u.discord_user_id in bailer_ids else u.display_name)
@@ -123,7 +131,7 @@ class AttendanceCog(commands.Cog):
                 f"\n✅: {yes_names}"
                 f"\n❌: {no_names}"
             )
-            embed = build_klatretid_embed(description=description)
+            embed = build_klatretid_embed(description=description, location=location)
         try:
             await msg.edit(embed=embed)
         except discord.HTTPException:
