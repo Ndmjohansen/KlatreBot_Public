@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     klatretid_post_hour: int = 17
     klatretid_start_hour: int = 20
 
+    # Seasonal mode: show climbing location on the klatretid embed.
+    # Weekday (Mon=0 … Sun=6) -> location name.
+    seasonal_enabled: bool = False
+    seasonal_locations: dict[int, str] = {0: "Sydhavn", 3: "Vanløse"}
+
     gpt_recent_message_count: int = 25
     rate_limit_per_user_per_hour: int = 30
     log_level: str = "INFO"
