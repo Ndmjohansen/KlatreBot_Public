@@ -47,7 +47,7 @@ async def test_reply_returns_chat_reply(monkeypatch, tmp_path, fake_response, db
     assert "hvad så" in call_kwargs["input"]
     assert "42" in call_kwargs["input"]
     assert call_kwargs["tools"] == [{"type": "web_search"}]
-    assert "web_search_call.action.sources" in call_kwargs["include"]
+    assert "include" not in call_kwargs
 
 
 async def test_reply_includes_recent_context(monkeypatch, tmp_path, fake_response, db):
@@ -321,13 +321,25 @@ def test_extract_sources_from_response():
 
     fake_resp = MagicMock()
     fake_resp.output = [
-        MagicMock(type="message"),  # not a search call
         MagicMock(
             type="web_search_call",
             action=MagicMock(sources=[
-                MagicMock(url="https://a.dk"),
-                MagicMock(url="https://b.dk"),
+                MagicMock(url="https://incidental.example"),
             ]),
+        ),
+        MagicMock(
+            type="message",
+            content=[
+                MagicMock(
+                    type="output_text",
+                    annotations=[
+                        MagicMock(type="url_citation", url="https://a.dk"),
+                        MagicMock(type="url_citation", url="https://b.dk"),
+                        MagicMock(type="url_citation", url="https://a.dk"),
+                        MagicMock(type="file_citation", url=None),
+                    ],
+                )
+            ],
         ),
     ]
     assert _extract_sources(fake_resp) == ["https://a.dk", "https://b.dk"]
