@@ -41,6 +41,7 @@ class ChatCog(commands.Cog):
             text = "Jeg kunne ikke finde på et svar. Prøv igen."
         await ctx.reply(
             text,
+            suppress_embeds=True,
             allowed_mentions=discord.AllowedMentions(
                 users=True, everyone=False, roles=False, replied_user=True
             ),
