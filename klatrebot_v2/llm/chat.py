@@ -38,16 +38,23 @@ class ChatReply(BaseModel):
 
 
 def _extract_sources(resp) -> list[str]:
-    """Pull URLs from `web_search_call.action.sources`. Returns [] if not present."""
-    out = getattr(resp, "output", None) or []
-    for item in out:
-        if getattr(item, "type", None) == "web_search_call":
-            action = getattr(item, "action", None)
-            sources = getattr(action, "sources", None) if action else None
-            if not sources:
-                return []
-            return [getattr(s, "url", "") for s in sources if getattr(s, "url", None)]
-    return []
+    """Return only URLs explicitly cited in the final answer text."""
+    sources: list[str] = []
+    seen: set[str] = set()
+    for item in getattr(resp, "output", None) or []:
+        if getattr(item, "type", None) != "message":
+            continue
+        for content in getattr(item, "content", None) or []:
+            if getattr(content, "type", None) != "output_text":
+                continue
+            for annotation in getattr(content, "annotations", None) or []:
+                if getattr(annotation, "type", None) != "url_citation":
+                    continue
+                url = getattr(annotation, "url", None)
+                if url and url not in seen:
+                    seen.add(url)
+                    sources.append(url)
+    return sources
 
 
 def _extract_function_calls(resp) -> list[dict]:
@@ -133,7 +140,6 @@ async def reply(
         tools=tools,
         reasoning={"effort": "low"},
         text={"verbosity": "medium"},
-        include=["web_search_call.action.sources"],
     )
     for _ in range(8):
         if memory_run_id is None:
@@ -165,7 +171,6 @@ async def reply(
             previous_response_id=getattr(resp, "id"),
             reasoning={"effort": "low"},
             text={"verbosity": "medium"},
-            include=["web_search_call.action.sources"],
         )
     return ChatReply(text=resp.output_text or "", sources=_extract_sources(resp))
 
