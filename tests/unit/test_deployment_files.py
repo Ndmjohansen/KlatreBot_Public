@@ -24,13 +24,13 @@ def test_install_and_ci_deploy_memory_systemd_units():
     assert "klatrebot-memory.timer" in install
     assert "systemctl enable --now klatrebot-memory.timer" in install
     assert "USER_ALIASES_CONFIG_PATH=" in install
-    assert "MEMORY_COMPILER_MODEL=gpt-5.4-nano" in install
+    assert "MEMORY_COMPILER_MODEL=gpt-5.6-luna" in install
     assert "MEMORY_SEGMENT_MIN_TOTAL_CHARS=300" in install
     assert "MEMORY_SEGMENT_MIN_PARTICIPANTS=2" in install
     assert "klatrebot-memory.service" in workflow
     assert "klatrebot-memory.timer" in workflow
     assert "systemctl enable --now klatrebot-memory.timer" in workflow
     assert "USER_ALIASES_CONFIG_PATH=${{ secrets.USER_ALIASES_CONFIG_PATH }}" in workflow
-    assert "MEMORY_COMPILER_MODEL=${{ vars.MEMORY_COMPILER_MODEL || 'gpt-5.4-nano' }}" in workflow
+    assert "MEMORY_COMPILER_MODEL=${{ vars.MEMORY_COMPILER_MODEL || 'gpt-5.6-luna' }}" in workflow
     assert "MEMORY_SEGMENT_MIN_TOTAL_CHARS=${{ vars.MEMORY_SEGMENT_MIN_TOTAL_CHARS || '300' }}" in workflow
     assert "MEMORY_SEGMENT_MIN_PARTICIPANTS=${{ vars.MEMORY_SEGMENT_MIN_PARTICIPANTS || '2' }}" in workflow

@@ -41,7 +41,8 @@ async def test_reply_returns_chat_reply(monkeypatch, tmp_path, fake_response, db
     assert result.sources == []
     fake_client.responses.create.assert_awaited_once()
     call_kwargs = fake_client.responses.create.await_args.kwargs
-    assert call_kwargs["model"] == "gpt-5.4"
+    assert call_kwargs["model"] == "gpt-5.6-terra"
+    assert call_kwargs["reasoning"] == {"effort": "low"}
     assert "Du er en klatrebot." in call_kwargs["input"]
     assert "hvad så" in call_kwargs["input"]
     assert "42" in call_kwargs["input"]

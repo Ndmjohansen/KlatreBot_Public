@@ -17,7 +17,8 @@ def test_settings_loads_from_env(monkeypatch, tmp_path):
     assert s.discord_key == "fake_discord"
     assert s.openai_key == "fake_openai"
     assert s.discord_main_channel_id == 111
-    assert s.model == "gpt-5.4"
+    assert s.model == "gpt-5.6-terra"
+    assert s.memory_compiler_model == "gpt-5.6-luna"
     assert s.timezone == "Europe/Copenhagen"
     assert s.klatretid_days == [0, 3]
 

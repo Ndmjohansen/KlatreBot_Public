@@ -62,7 +62,7 @@ async def chat_once(
         model=s.model,
         input=prompt,
         tools=MEMORY_TOOL_DEFS,
-        reasoning={"effort": "medium"},
+        reasoning={"effort": "low"},
         text={"verbosity": "medium"},
     )
     usage_total = _empty_usage()
@@ -114,7 +114,7 @@ async def chat_once(
             input=tool_outputs,
             tools=MEMORY_TOOL_DEFS,
             previous_response_id=getattr(resp, "id"),
-            reasoning={"effort": "medium"},
+            reasoning={"effort": "low"},
             text={"verbosity": "medium"},
         )
         _add_usage(usage_total, resp)

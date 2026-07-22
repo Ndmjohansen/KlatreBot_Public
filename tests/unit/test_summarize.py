@@ -37,6 +37,8 @@ async def test_summarize_calls_llm_with_messages(monkeypatch, tmp_path):
 
     assert "Her er hvad boomerene" in summary
     call_kwargs = fake_client.responses.create.await_args.kwargs
+    assert call_kwargs["model"] == "gpt-5.6-terra"
+    assert call_kwargs["reasoning"] == {"effort": "low"}
     assert "Magnus (10): hej alle" in call_kwargs["input"]
     assert "Pelle (11): god morgen" in call_kwargs["input"]
     assert "tools" not in call_kwargs or call_kwargs["tools"] == []

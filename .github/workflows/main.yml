@@ -51,7 +51,7 @@ jobs:
             USER_ALIASES_CONFIG_PATH=${{ secrets.USER_ALIASES_CONFIG_PATH }}
             MEMORY_ENABLED=${{ vars.MEMORY_ENABLED || 'false' }}
             MEMORY_ACTIVE_RUN_NAME=${{ vars.MEMORY_ACTIVE_RUN_NAME || 'production' }}
-            MEMORY_COMPILER_MODEL=${{ vars.MEMORY_COMPILER_MODEL || 'gpt-5.4-nano' }}
+            MEMORY_COMPILER_MODEL=${{ vars.MEMORY_COMPILER_MODEL || 'gpt-5.6-luna' }}
             MEMORY_SEGMENT_GAP_MINUTES=${{ vars.MEMORY_SEGMENT_GAP_MINUTES || '30' }}
             MEMORY_SEGMENT_MIN_HUMAN_MESSAGES=${{ vars.MEMORY_SEGMENT_MIN_HUMAN_MESSAGES || '8' }}
             MEMORY_SEGMENT_MIN_TOTAL_CHARS=${{ vars.MEMORY_SEGMENT_MIN_TOTAL_CHARS || '300' }}
