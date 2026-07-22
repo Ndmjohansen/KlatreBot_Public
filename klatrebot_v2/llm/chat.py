@@ -131,7 +131,7 @@ async def reply(
         model=s.model,
         input=full_input,
         tools=tools,
-        reasoning={"effort": "medium"},
+        reasoning={"effort": "low"},
         text={"verbosity": "medium"},
         include=["web_search_call.action.sources"],
     )
@@ -163,7 +163,7 @@ async def reply(
             input=tool_outputs,
             tools=tools,
             previous_response_id=getattr(resp, "id"),
-            reasoning={"effort": "medium"},
+            reasoning={"effort": "low"},
             text={"verbosity": "medium"},
             include=["web_search_call.action.sources"],
         )
@@ -200,7 +200,7 @@ async def summarize(msgs) -> str:
     resp = await client.responses.create(
         model=get_settings().model,
         input=full_input,
-        reasoning={"effort": "medium"},
+        reasoning={"effort": "low"},
         text={"verbosity": "medium"},
     )
     return resp.output_text or ""

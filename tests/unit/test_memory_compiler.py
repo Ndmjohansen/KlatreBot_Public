@@ -665,6 +665,8 @@ async def test_compile_run_reports_total_llm_token_usage(monkeypatch, db):
     assert "input_tokens: 300" in events
     assert "output_tokens: 75" in events
     assert "total_tokens: 375" in events
+    for call in fake_client.responses.create.await_args_list:
+        assert call.kwargs["reasoning"] == {"effort": "low"}
 
 
 async def test_compile_run_summarizes_meaningful_segments_concurrently(db):

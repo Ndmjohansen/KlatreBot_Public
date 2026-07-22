@@ -638,6 +638,7 @@ async def summarize_segment_with_llm(
     resp = await client.responses.create(
         model=model,
         input=_build_summary_prompt(segment),
+        reasoning={"effort": "low"},
         text={"format": {"type": "json_object"}, "verbosity": "low"},
     )
     if usage is not None:
@@ -655,6 +656,7 @@ async def summarize_rollup_with_llm(
     resp = await client.responses.create(
         model=model,
         input=_build_rollup_prompt(rollup),
+        reasoning={"effort": "low"},
         text={"format": {"type": "json_object"}, "verbosity": "low"},
     )
     if usage is not None:
