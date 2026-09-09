@@ -27,6 +27,10 @@ from klatrebot_v2.settings import get_settings
 log = logging.getLogger(__name__)
 
 
+class SnapshotDatabaseMismatch(ValueError):
+    """The snapshot request does not identify this worker's database."""
+
+
 def retry_delay(exc, failures):
     delay = min(300, 5 * 2 ** min(failures - 1, 6))
     response = getattr(exc, 'response', None)
@@ -205,7 +209,7 @@ class Worker:
                     result["coverage"]["worker_peak_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
                 elif operation == "snapshot":
                     async with self.lock:
-                        result = await finish_thread(self.snapshot)
+                        result = await finish_thread(self.snapshot, payload.get("db_path"))
                 elif operation == 'status':
                     result = await self.status()
                 else:
@@ -220,10 +224,15 @@ class Worker:
                 writer.close()
                 await writer.wait_closed()
 
-    def snapshot(self):
+    def snapshot(self, requested_db):
+        source_db = Path(self.settings.db_path).resolve(strict=True)
+        if not isinstance(requested_db, str) or not Path(requested_db).is_absolute():
+            raise SnapshotDatabaseMismatch("An absolute database path is required")
+        if not source_db.samefile(requested_db):
+            raise SnapshotDatabaseMismatch("Requested database differs from worker database")
         dest = self.palace.path.parent / "snapshots" / uuid.uuid4().hex
         dest.mkdir(parents=True, mode=0o700)
-        for source, name in [(Path(self.settings.db_path), "source.db"),
+        for source, name in [(source_db, "source.db"),
                              (self.palace.path / "sqlite_exact.sqlite3", "sqlite_exact.sqlite3")]:
             with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True) as src:
                 with sqlite3.connect(dest / name) as target:
@@ -234,7 +243,7 @@ class Worker:
             path = self.palace.path / name
             if path.exists():
                 shutil.copy2(path, dest / name)
-        return {"snapshot_path": str(dest)}
+        return {"snapshot_path": str(dest), "source_db_path": str(source_db)}
 
 
 async def main():
@@ -243,7 +252,14 @@ async def main():
     args = parser.parse_args()
     settings = get_settings()
     if args.command in {'snapshot', 'status'}:
-        print(json.dumps(await request(settings.memory_socket_path, {"operation": args.command}, timeout=60), indent=2))
+        payload = {"operation": args.command}
+        if args.command == 'snapshot':
+            payload['db_path'] = str(Path(settings.db_path).resolve(strict=True))
+        result = await request(settings.memory_socket_path, payload, timeout=60)
+        if args.command == 'snapshot' and (not result.get('source_db_path')
+                or not Path(payload['db_path']).samefile(result['source_db_path'])):
+            raise SnapshotDatabaseMismatch('Worker did not confirm the requested database')
+        print(json.dumps(result, indent=2))
         return
     path = settings.memory_index_path or str(Path(settings.db_path).parent / "mempalace")
     if args.command == "estimate":

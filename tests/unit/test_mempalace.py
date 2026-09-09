@@ -174,7 +174,7 @@ async def test_worker_interrupted_sync_and_snapshot_restore(tmp_path, monkeypatc
         await worker.sync()
         await worker.sync()
         assert palace.collection.count() == 30
-        snapshot = worker.snapshot()
+        snapshot = worker.snapshot(str(Path(settings.db_path).resolve()))
         restored = Palace(snapshot["snapshot_path"])
         try:
             assert restored.collection.count() == 30
@@ -316,7 +316,7 @@ async def test_unix_worker_transport_and_restart(tmp_path):
                 result = await request(str(socket_path), dict(cases[0]["request"], run_id=0))
                 assert result["status"] == "degraded"
                 assert result["coverage"]["worker_peak_rss_mb"] > 0
-                snapshot = await request(str(socket_path), {"operation": "snapshot"})
+                snapshot = await request(str(socket_path), {"operation": "snapshot", "db_path": str(Path(settings.db_path).resolve())})
                 assert (Path(snapshot["snapshot_path"]) / "source.db").exists()
         finally:
             await worker.cache.close()

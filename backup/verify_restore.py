@@ -24,11 +24,16 @@ FILES = ('source.db', 'sqlite_exact.sqlite3', 'index.json', 'manifest.json')
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--socket', required=True)
+    parser.add_argument('--db', required=True)
     parser.add_argument('--directory', required=True)
     args = parser.parse_args()
+    requested_db = Path(args.db).resolve(strict=True)
     directory = Path(args.directory).resolve()
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
-    snapshot = Path((await request(args.socket, {'operation': 'snapshot'}, timeout=60))['snapshot_path'])
+    result = await request(args.socket, {'operation': 'snapshot', 'db_path': str(requested_db)}, timeout=60)
+    if not result.get('source_db_path') or not requested_db.samefile(result['source_db_path']):
+        raise RuntimeError('Worker did not confirm the requested database')
+    snapshot = Path(result['snapshot_path'])
     archive = directory / 'snapshot.zip'
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
         for name in FILES:

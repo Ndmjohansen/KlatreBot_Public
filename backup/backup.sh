@@ -41,7 +41,7 @@ echo "[$(date -Is)] Starting backup of ${DB_PATH}"
 SOCKET_PATH=${MEMORY_SOCKET_PATH:-/run/klatrebot-retrieval/worker.sock}
 INDEX_PATH=${MEMORY_INDEX_PATH:-$(dirname "$DB_PATH")/mempalace}
 if [ -S "$SOCKET_PATH" ]; then
-    WORKER_SNAPSHOT=$(python3 "$(dirname "$(readlink -f "$0")")/snapshot.py" --socket "$SOCKET_PATH")
+    WORKER_SNAPSHOT=$(python3 "$(dirname "$(readlink -f "$0")")/snapshot.py" --socket "$SOCKET_PATH" --db "$DB_PATH")
     ( cd "$WORKER_SNAPSHOT" && zip -q "$ZIPPATH" source.db sqlite_exact.sqlite3 index.json manifest.json )
 elif [ -d "$INDEX_PATH" ]; then
     echo "Memory index exists but worker is unavailable; refusing an incomplete backup" >&2
