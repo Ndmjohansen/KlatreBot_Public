@@ -93,6 +93,15 @@ sudo systemctl start klatrebot-memory.service
 sudo journalctl -u klatrebot-memory.service -f
 ```
 
+## User administration
+
+The configured bot admin and users marked as admins in the database can use:
+
+- `!set_display_name USER_ID Name` — create/update a user and save a persistent name alias.
+- `!set_pronouns USER_ID hun/hende` — save `han/ham`, `hun/hende`, or `de/dem` directly in the database, including before a new user has posted.
+
+Pronoun edits survive name updates and deployments. New users default to `han/ham`.
+
 ## Backup
 
 Backups use `sqlite3 .backup`, `zip`, and `rclone`. Configure the `gdrive` rclone remote for the service user before relying on cron. `install.sh` registers a daily cron entry equivalent to:
