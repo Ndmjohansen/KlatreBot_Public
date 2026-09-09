@@ -64,9 +64,9 @@ jobs:
             ADMIN_USER_ID=${{ secrets.ADMIN_USER_ID }}
             DB_PATH=/home/${{ secrets.SSH_USER }}/klatrebot-data/klatrebot_v2.db
             USER_ALIASES_CONFIG_PATH=${{ secrets.USER_ALIASES_CONFIG_PATH }}
-            MEMORY_ENABLED=${{ vars.MEMORY_ENABLED || 'false' }}
-            MEMORY_BACKEND=${{ vars.MEMORY_BACKEND || 'legacy' }}
-            MEMORY_SYNC_ENABLED=${{ vars.MEMORY_SYNC_ENABLED || 'false' }}
+            MEMORY_ENABLED=${{ vars.MEMORY_ENABLED || 'true' }}
+            MEMORY_BACKEND=${{ vars.MEMORY_BACKEND || 'mempalace' }}
+            MEMORY_SYNC_ENABLED=${{ vars.MEMORY_SYNC_ENABLED || 'true' }}
             MEMORY_SOCKET_PATH=/run/klatrebot-retrieval/worker.sock
             MEMORY_INDEX_PATH=/home/${{ secrets.SSH_USER }}/klatrebot-data/mempalace
             MEMORY_ACTIVE_RUN_NAME=${{ vars.MEMORY_ACTIVE_RUN_NAME || 'production' }}

@@ -34,6 +34,12 @@ sudo systemctl start klatrebot
 
 CI auto-deploys on push to `main`: SSH to the host, pull, `poetry install --sync`, rewrite `/etc/klatrebot/klatrebot.env` from GitHub secrets, reinstall the templated units, restart `klatrebot`, and enable the memory timer.
 
+Deployment enables MemPalace and incremental index synchronization by default
+(`MEMORY_ENABLED=true`, `MEMORY_BACKEND=mempalace`, `MEMORY_SYNC_ENABLED=true`).
+The retrieval worker reports ready before the bot starts. To switch back on the
+next deployment, set the GitHub repository variable `MEMORY_BACKEND=legacy`.
+Local runs retain the conservative defaults from `.env.example`.
+
 Set these private values directly in `/etc/klatrebot/klatrebot.env` on the host
 before deploying. CI preserves them when it rewrites the other environment
 settings; it does not obtain them from GitHub:
