@@ -31,3 +31,8 @@ jobs:
 
       - name: Run unit tests
         run: poetry run pytest -v
+
+      - name: Check project metadata and deployment scripts
+        run: |
+          poetry check
+          bash -n install.sh backup/backup.sh

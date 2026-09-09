@@ -19,6 +19,8 @@ class RelatedMemory(BaseModel):
 
 
 class MemoryResult(BaseModel):
+    source_ids: list[int] = Field(default_factory=list)
+    source_excerpts: list[dict] = Field(default_factory=list)
     kind: str
     source_handle: str
     topic_title: str | None = None
@@ -40,6 +42,10 @@ class MemoryResult(BaseModel):
 
 
 class RecallResult(BaseModel):
+    status: str = "ok"
+    coverage: dict = Field(default_factory=dict)
+    continuation_cursor: str | None = None
+    indexing_watermark: str | None = None
     answerable: bool
     results: list[MemoryResult] = Field(default_factory=list)
     source_handles: list[str] = Field(default_factory=list)
@@ -152,7 +158,11 @@ async def recall_community_memory(
     item_results = await _attach_related_memories(conn, run_id=run_id, items=item_results)
     results = _rank_results(
         _merge_results([*rollup_results, *item_results, *ambient_results, *segment_results])
-    )[:limit]
+    )
+    invalid = {r[0] for r in await conn.execute_fetchall('SELECT handle FROM memory_invalid_current')}
+    results = [r for r in results if r.source_handle not in invalid][:limit]
+    for result in results:
+        result.related_memories = [r for r in result.related_memories if r.source_handle not in invalid]
     return RecallResult(
         answerable=bool(results),
         results=results,
@@ -169,11 +179,15 @@ async def get_memory_sources(
     """Return raw source messages around segment/item handles."""
     message_ids: set[int] = set()
     for handle in source_handles:
+        if await conn.execute_fetchall('SELECT 1 FROM memory_invalid_current WHERE handle=?', (handle,)):
+            continue
         kind, _, raw_id = handle.partition(":")
         if not raw_id.isdigit():
             continue
         if kind == "seg":
             message_ids.update(await _segment_message_ids(conn, int(raw_id)))
+        elif kind == "msg":
+            message_ids.add(int(raw_id))
         elif kind == "mem":
             message_ids.update(await _memory_item_source_ids(conn, int(raw_id)))
         elif kind == "roll":
@@ -194,7 +208,7 @@ async def get_memory_sources(
                COALESCE(u.display_name, '?'), m.content, m.timestamp_utc, m.is_bot
         FROM messages m
         LEFT JOIN users u ON u.discord_user_id = m.user_id
-        WHERE m.discord_message_id IN ({placeholders})
+        WHERE m.deleted=0 AND m.discord_message_id IN ({placeholders})
         ORDER BY m.channel_id, m.timestamp_utc, m.discord_message_id
         """,
         tuple(expanded_ids),
@@ -969,7 +983,7 @@ async def _nearby_message_ids(
     radius: int,
 ) -> list[int]:
     row = await conn.execute_fetchall(
-        "SELECT channel_id, timestamp_utc FROM messages WHERE discord_message_id = ?",
+        "SELECT channel_id, timestamp_utc FROM messages WHERE discord_message_id = ? AND deleted=0",
         (message_id,),
     )
     if not row:
@@ -979,7 +993,7 @@ async def _nearby_message_ids(
         """
         SELECT discord_message_id
         FROM messages
-        WHERE channel_id = ? AND timestamp_utc <= ?
+        WHERE channel_id = ? AND deleted=0 AND timestamp_utc <= ?
         ORDER BY timestamp_utc DESC, discord_message_id DESC
         LIMIT ?
         """,
@@ -989,7 +1003,7 @@ async def _nearby_message_ids(
         """
         SELECT discord_message_id
         FROM messages
-        WHERE channel_id = ? AND timestamp_utc > ?
+        WHERE channel_id = ? AND deleted=0 AND timestamp_utc > ?
         ORDER BY timestamp_utc ASC, discord_message_id ASC
         LIMIT ?
         """,

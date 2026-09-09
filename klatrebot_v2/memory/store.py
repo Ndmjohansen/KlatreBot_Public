@@ -350,7 +350,7 @@ async def load_messages(
     to_time: datetime | None = None,
     channel_ids: list[int] | None = None,
 ) -> list[RawMemoryMessage]:
-    where = []
+    where = ["m.deleted=0"]
     params: list[Any] = []
     if from_time is not None:
         where.append("m.timestamp_utc >= ?")
@@ -432,6 +432,10 @@ async def insert_segment(
     )
     segment_id = int(cursor.lastrowid)
     for pos, message in enumerate(segment.messages):
+        await conn.execute(
+            "INSERT OR REPLACE INTO memory_segment_evidence VALUES (?, ?, ?, ?)",
+            (segment_id, message.discord_message_id, message.content, message.user_id),
+        )
         await conn.execute(
             """
             INSERT INTO segment_messages (segment_id, discord_message_id, position)
@@ -748,6 +752,9 @@ async def upsert_daily_ambient_memory(
             (ambient_id, tag),
         )
     await conn.commit()
+    if status == 'completed':
+        await conn.execute('DELETE FROM memory_invalid_handles WHERE handle=?', (f'amb:{ambient_id}',))
+        await conn.commit()
     return ambient_id
 
 
@@ -878,6 +885,9 @@ async def upsert_rollup(
             (rollup_id, tag),
         )
     await conn.commit()
+    if status == 'completed':
+        await conn.execute('DELETE FROM memory_invalid_handles WHERE handle=?', (f'roll:{rollup_id}',))
+        await conn.commit()
     return rollup_id
 
 

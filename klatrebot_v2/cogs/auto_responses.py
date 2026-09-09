@@ -12,6 +12,7 @@ import discord
 from discord.ext import commands
 
 from klatrebot_v2.db import messages as msg_db, users as users_db
+from klatrebot_v2.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
@@ -94,7 +95,7 @@ RESPONSES: list[AutoResponse] = [
         name="downus",
         pattern=re.compile(r"^!downus|fail", re.I),
         handler=lambda m: _static(
-            "https://cdn.discordapp.com/attachments/1003718776430268588/1153668006728192101/downus_on_wall.gif"
+            get_settings().downus_gif_url
         ),
         cooldown_seconds=120,
     ),
@@ -107,7 +108,7 @@ RESPONSES: list[AutoResponse] = [
         name="det_kan_man_ik",
         pattern=re.compile(r"det\skan\sman\s(\w+\s)?ik", re.I),
         handler=lambda m: _static(
-            "https://cdn.discordapp.com/attachments/1049312345068933134/1049363489354952764/pellememetekst.gif"
+            get_settings().pelle_gif_url
         ),
         cooldown_seconds=120,
     ),
@@ -161,6 +162,30 @@ class AutoResponsesCog(commands.Cog):
             self._cooldown_until_by_response[response.name] = (
                 now + timedelta(seconds=response.cooldown_seconds)
             )
+
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent) -> None:
+        if "content" in payload.data:
+            # The original on_message listener may still be awaiting its DB
+            # writes. A cached Discord message provides the known identity and
+            # original timestamp needed to persist the edited version first.
+            cached = getattr(payload, 'cached_message', None)
+            if cached is not None:
+                await users_db.upsert(self.bot.db_conn, discord_user_id=cached.author.id,
+                                      display_name=_display_name(cached.author))
+                await msg_db.insert(self.bot.db_conn, discord_message_id=cached.id,
+                    channel_id=cached.channel.id, user_id=cached.author.id,
+                    content=payload.data['content'], timestamp_utc=cached.created_at,
+                    is_bot=cached.author.bot)
+            await msg_db.edit(self.bot.db_conn, payload.message_id, payload.data["content"])
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
+        await msg_db.delete(self.bot.db_conn, [payload.message_id])
+
+    @commands.Cog.listener()
+    async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent) -> None:
+        await msg_db.delete(self.bot.db_conn, payload.message_ids)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:

@@ -360,7 +360,7 @@ async def test_chat_once_uses_memory_tools_without_discord(monkeypatch, db):
     fake_client.responses.create = AsyncMock(side_effect=[first, second])
     monkeypatch.setattr("klatrebot_v2.memory.__main__.get_client", lambda: fake_client)
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         assert conn is db
         assert run_id == 5
         assert name == "recall_community_memory"
@@ -413,7 +413,7 @@ async def test_chat_once_includes_recent_cli_context(monkeypatch, db):
 async def test_chat_once_defaults_channel_id_from_settings(monkeypatch, db):
     monkeypatch.setenv("DISCORD_KEY", "x")
     monkeypatch.setenv("OPENAI_KEY", "x")
-    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "1003718776430268588")
+    monkeypatch.setenv("DISCORD_MAIN_CHANNEL_ID", "456")
     monkeypatch.setenv("DISCORD_SANDBOX_CHANNEL_ID", "2")
     monkeypatch.setenv("ADMIN_USER_ID", "3")
     from klatrebot_v2.settings import get_settings
@@ -429,7 +429,7 @@ async def test_chat_once_defaults_channel_id_from_settings(monkeypatch, db):
     await chat_once(db, run_id=5, question="hvad skete der?")
 
     first_call = fake_client.responses.create.await_args.kwargs
-    assert "CHANNEL_ID: 1003718776430268588" in first_call["input"]
+    assert "CHANNEL_ID: 456" in first_call["input"]
 
 
 async def test_chat_once_includes_known_user_aliases(monkeypatch, db):
@@ -485,7 +485,7 @@ async def test_chat_once_executes_multiple_memory_tool_rounds(monkeypatch, db):
 
     calls = []
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         calls.append((name, arguments))
         return '{"ok": true}'
 
@@ -521,7 +521,7 @@ async def test_chat_once_pretty_prints_show_memory_json(monkeypatch, db, capsys)
     fake_client.responses.create = AsyncMock(side_effect=[first, second])
     monkeypatch.setattr("klatrebot_v2.memory.__main__.get_client", lambda: fake_client)
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         return '{"answerable":true,"results":[{"text":"Spanien er på listen"}]}'
 
     monkeypatch.setattr("klatrebot_v2.memory.__main__.execute_memory_tool", fake_execute)
@@ -554,7 +554,7 @@ async def test_chat_once_prints_agent_tool_trace(monkeypatch, db, capsys):
     fake_client.responses.create = AsyncMock(side_effect=[first, second])
     monkeypatch.setattr("klatrebot_v2.memory.__main__.get_client", lambda: fake_client)
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         return '{"answerable":true}'
 
     monkeypatch.setattr("klatrebot_v2.memory.__main__.execute_memory_tool", fake_execute)
@@ -593,7 +593,7 @@ async def test_chat_once_prints_total_token_usage(monkeypatch, db, capsys):
     fake_client.responses.create = AsyncMock(side_effect=[first, second])
     monkeypatch.setattr("klatrebot_v2.memory.__main__.get_client", lambda: fake_client)
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         return '{"answerable":true}'
 
     monkeypatch.setattr("klatrebot_v2.memory.__main__.execute_memory_tool", fake_execute)

@@ -8,7 +8,7 @@ async def test_sync_config_aliases_from_json_map(db, tmp_path):
     config.write_text(
         json.dumps(
             {
-                "135463962316636160": ["Tobias", "Tobi"],
+                "456": ["Tobias", "Tobi"],
                 "123": {"names": ["Pelle", "Twink"]},
             }
         ),
@@ -19,7 +19,7 @@ async def test_sync_config_aliases_from_json_map(db, tmp_path):
 
     resolved = await user_aliases.resolve_people_names(db, ["tobi", "Twink"])
 
-    assert resolved.resolved_ids == [123, 135463962316636160]
+    assert resolved.resolved_ids == [123, 456]
     assert resolved.unmatched == []
     assert resolved.ambiguous == {}
 

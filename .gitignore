@@ -15,4 +15,39 @@ MIGRATION_GUIDE.md
 tests/__pycache__/*
 backup/data_cleanup/*
 .worktrees/
-docs/superpowers/
+# Private operational reports, agent notes and historical reference material.
+/docs/
+/.private/
+/.agents/
+/.codex/
+/klatrebot_v1/
+
+# Credentials and machine-specific configuration (keep public examples).
+.env.*
+*.env
+!.env.example
+!*.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+local_*.json
+user_pronouns.json
+
+# Chat exports, snapshots, indexes, evaluation traces and backup archives.
+/acceptance/
+/results/
+/exports/
+/snapshots/
+/mempalace/
+/backups/
+*.sqlite
+*.sqlite3
+*.sqlite*
+*.log
+*.jsonl
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.bak

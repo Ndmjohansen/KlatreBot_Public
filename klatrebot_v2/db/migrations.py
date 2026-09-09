@@ -3,6 +3,10 @@ import aiosqlite
 
 
 _DDL = [
+    """CREATE TABLE IF NOT EXISTS message_tombstones (
+        discord_message_id INTEGER PRIMARY KEY,
+        deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
     """
     CREATE TABLE IF NOT EXISTS users (
         discord_user_id  INTEGER PRIMARY KEY,
@@ -268,6 +272,7 @@ _DDL = [
 ]
 
 _ALTER = [
+    "ALTER TABLE messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE memory_compiler_runs ADD COLUMN config_hash TEXT",
     "ALTER TABLE conversation_segments ADD COLUMN segment_key TEXT",
     "ALTER TABLE conversation_segments ADD COLUMN error TEXT",
@@ -276,10 +281,31 @@ _ALTER = [
 
 _POST_DDL = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_run_key ON conversation_segments(compiler_run_id, segment_key)",
+    """CREATE TABLE IF NOT EXISTS user_pronouns (
+        discord_user_id INTEGER PRIMARY KEY,
+        pronouns TEXT NOT NULL DEFAULT 'han/ham',
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+]
+
+_PRONOUN_DEFAULTS = [
+    """INSERT OR IGNORE INTO user_pronouns (discord_user_id)
+        SELECT discord_user_id FROM users""",
+    """CREATE TRIGGER IF NOT EXISTS users_insert_pronouns AFTER INSERT ON users
+        BEGIN
+            INSERT OR IGNORE INTO user_pronouns (discord_user_id) VALUES (NEW.discord_user_id);
+        END""",
 ]
 
 
-async def run(conn: aiosqlite.Connection) -> None:
+async def run(conn: aiosqlite.Connection, *, pronoun_seeds: dict[int, str] | None = None) -> None:
+    # Private deployment configuration supplies identities; the database owns
+    # their persisted values. Validate before executing any schema changes.
+    seeds = pronoun_seeds or {}
+    if any(not isinstance(uid, int) or isinstance(uid, bool) or uid <= 0
+           or not isinstance(value, str) or not value.strip() or len(value) > 80
+           for uid, value in seeds.items()):
+        raise ValueError("Invalid pronoun seed configuration")
     for stmt in _DDL:
         await conn.execute(stmt)
     for stmt in _ALTER:
@@ -290,4 +316,11 @@ async def run(conn: aiosqlite.Connection) -> None:
                 raise
     for stmt in _POST_DDL:
         await conn.execute(stmt)
+    await conn.executemany(
+        "INSERT OR IGNORE INTO user_pronouns (discord_user_id, pronouns) VALUES (?, ?)",
+        seeds.items())
+    for stmt in _PRONOUN_DEFAULTS:
+        await conn.execute(stmt)
+    from klatrebot_v2.memory.journal import install
+    await install(conn)
     await conn.commit()

@@ -108,8 +108,13 @@ async def resolve_people_names(conn: aiosqlite.Connection, names: list[str] | No
     ambiguous: dict[str, list[int]] = {}
     unmatched: list[str] = []
     for name in names:
+        mention = re.fullmatch(r"<@!?(\d+)>", name.strip())
+        if mention:
+            resolved.add(int(mention.group(1)))
+            continue
         normalized = normalize_alias(name)
         if not normalized:
+            unmatched.append(name)
             continue
         rows = await conn.execute_fetchall(
             """

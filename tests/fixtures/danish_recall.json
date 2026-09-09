@@ -1,0 +1,662 @@
+[
+  {
+    "id": "da-01",
+    "request": {
+      "query": "Hvad var Annas seneste afbud til klatring?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1001
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1001,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Jeg melder afbud, skal passe katten",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-02",
+    "request": {
+      "query": "Hvorfor kunne Anna ikke komme?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1002
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1002,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Kan ikke komme, min cykel er punkteret",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-03",
+    "request": {
+      "query": "Hvem havde ondt i skulderen?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1003
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1003,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Min skulder gør ondt, springer over",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-04",
+    "request": {
+      "query": "Hvad sagde Anna om at være syg?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1004
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1004,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Er syg med feber, bliver hjemme",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-05",
+    "request": {
+      "query": "Hvad var planen for Spanien?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1005
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1005,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Vi tager til Spanien i uge 29",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-06",
+    "request": {
+      "query": "Hvor ville Anna helst klatre?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1006
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1006,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Jeg foretrækker Sydhavn frem for Vanløse",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-07",
+    "request": {
+      "query": "Hvilket kalk bruger Anna?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1007
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1007,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Jeg bruger flydende kalk fra den blå flaske",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-08",
+    "request": {
+      "query": "Hvad besluttede vi om transport?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1008
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1008,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Vi besluttede at tage toget til Malmö",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-09",
+    "request": {
+      "query": "Hvornår åbner hallen ifølge Anna?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1009
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1009,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Hallen åbner klokken ti på søndag",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-10",
+    "request": {
+      "query": "Hvor spiste vi efter klatring?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1010
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1010,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Vi spiste pizza på hjørnet efter klatring",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-11",
+    "request": {
+      "query": "Hvad sagde Anna om Kjugekull?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1011
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1011,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Kjugekull var vådt, så vi kørte hjem",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-12",
+    "request": {
+      "query": "Hvad kostede klatreskoene?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1012
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1012,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Mine klatresko kostede 900 kroner",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-13",
+    "request": {
+      "query": "Hvem lånte crashpad?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1013
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1013,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Jeg lånte en crashpad af Bo i går",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-14",
+    "request": {
+      "query": "Hvad mangler vi til turen?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1014
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1014,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Vi mangler en gasbrænder til turen",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-15",
+    "request": {
+      "query": "Hvorfor droppede Anna træningen?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1015
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1015,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Dropper træning, overarbejde igen",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-16",
+    "request": {
+      "query": "Hvad skrev Anna da hun var helt smadret?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1016
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1016,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Er helt smadret, sofaen vinder i aften",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-17",
+    "request": {
+      "query": "Hvem havde glemt selen?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1017
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1017,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Jeg glemte selen derhjemme",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-18",
+    "request": {
+      "query": "Hvad mente Anna om den røde rute?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1018
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1018,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Den røde rute er mega sketchy ved toppen",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-19",
+    "request": {
+      "query": "Hvilken dag skulle vi mødes?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1019
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1019,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Vi mødes torsdag ved indgangen",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-20",
+    "request": {
+      "query": "Hvad drillede vi Bo med?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1020
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1020,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Bo tog to venstresko med, det glemmer vi aldrig",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-21",
+    "request": {
+      "query": "Hvad sagde Anna om fingeren?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1021
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1021,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Min finger er hævet efter gårsdagens klatring",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-22",
+    "request": {
+      "query": "Hvorfor blev turen udsat?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1022
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1022,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Turen blev udsat på grund af regn",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-23",
+    "request": {
+      "query": "Hvad var Annas mål for året?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1023
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1023,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Mit mål er at klatre en 7a inden jul",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-24",
+    "request": {
+      "query": "Hvad syntes Anna om autobelay?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1024
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1024,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Autobelay er fint når ingen kan sikre",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-25",
+    "request": {
+      "query": "Hvor blev nøglerne fundet?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1025
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1025,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Nøglerne lå i omklædningsrummet",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-26",
+    "request": {
+      "query": "Hvem tager kaffe med?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1026
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1026,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Jeg tager kaffe og kopper med på søndag",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-27",
+    "request": {
+      "query": "Hvad var det ubesvarede spørgsmål om sommerferien?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1027
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1027,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Vi ved stadig ikke hvor vi skal hen i sommerferien",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-28",
+    "request": {
+      "query": "Hvad skrev Anna om en hurtig session?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1028
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1028,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Er frisk på en hurtig sesh inden aftensmad",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-29",
+    "request": {
+      "query": "Hvordan gik konkurrencen?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1029
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1029,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Jeg blev nummer tre i konkurrencen",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  },
+  {
+    "id": "da-30",
+    "request": {
+      "query": "Hvorfor meldte Anna fra i sidste øjeblik?",
+      "people": [
+        1
+      ],
+      "channel_id": 42
+    },
+    "expected_source_ids": [
+      1030
+    ],
+    "messages": [
+      {
+        "discord_message_id": 1030,
+        "channel_id": 42,
+        "user_id": 1,
+        "content": "Melder fra, barnet skal hentes tidligt",
+        "timestamp_utc": "2026-08-25T12:00:00+00:00"
+      }
+    ]
+  }
+]

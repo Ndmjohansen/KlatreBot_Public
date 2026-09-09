@@ -13,6 +13,9 @@ dependencies = [
     "python-dateutil>=2.9",
     "pytz>=2024.1",
     "requests>=2.32",
+    "mempalace (==3.9.0)",
+    "tiktoken (>=0.14.0,<0.15.0)",
+    "numpy (>=1.26,<3.0)",
 ]
 
 [tool.poetry]

@@ -1,6 +1,7 @@
 # KlatreBot V2
 
-Discord bot for a climbing group. V1 archived under `klatrebot_v1/` — kept for reference, not deployed.
+Discord bot for a climbing group. An ignored local `klatrebot_v1/` archive may be
+kept for reference; it is not deployed or distributed.
 
 ## Run locally
 
@@ -32,6 +33,26 @@ sudo systemctl start klatrebot
 `klatrebot.service` and `klatrebot-memory.service` are templates — the `@SERVICE_USER@`, `@PROJECT_DIR@`, `@DATA_DIR@`, `@POETRY_DIR@` placeholders are substituted by `install.sh` and CI, so don't edit them by hand.
 
 CI auto-deploys on push to `main`: SSH to the host, pull, `poetry install --sync`, rewrite `/etc/klatrebot/klatrebot.env` from GitHub secrets, reinstall the templated units, restart `klatrebot`, and enable the memory timer.
+
+Set these private values directly in `/etc/klatrebot/klatrebot.env` on the host
+before deploying. CI preserves them when it rewrites the other environment
+settings; it does not obtain them from GitHub:
+
+- `USER_PRONOUN_SEEDS`: a JSON object mapping Discord IDs to initial pronouns.
+  The startup migration stores these in `user_pronouns` before applying the
+  `han/ham` default to other users. Repeated migrations preserve database edits.
+  Use `{}` only when no initial overrides are needed.
+- `DOWNUS_GIF_URL` and `PELLE_GIF_URL`: the private reaction image URLs.
+
+Local runs accept the same settings through `.env`. Real identities and URLs
+belong in private configuration, never in committed tests or examples.
+
+## Private local files
+
+`docs/`, `debug/`, `.private/`, the old v1 archive, chat exports, evaluation traces,
+database/index files, logs, credentials and backup archives are ignored. The
+committed fixtures contain synthetic examples. Ignoring a previously committed
+file does not remove it from existing Git history.
 
 ## Durable memory
 

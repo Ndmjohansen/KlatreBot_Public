@@ -39,8 +39,7 @@ async def test_recall_tool_reports_ambiguous_people_names(monkeypatch, db):
     await user_aliases.upsert_alias(db, discord_user_id=2, alias="Simon", source="config")
 
     async def fake_recall(conn, **kwargs):
-        assert kwargs["people"] is None
-        return _FakeRecall()
+        raise AssertionError("Ambiguous aliases must not invoke retrieval")
 
     monkeypatch.setattr(tools, "recall_community_memory", fake_recall)
 

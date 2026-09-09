@@ -43,7 +43,7 @@ async def test_reply_returns_chat_reply(monkeypatch, tmp_path, fake_response, db
     call_kwargs = fake_client.responses.create.await_args.kwargs
     assert call_kwargs["model"] == "gpt-5.6-terra"
     assert call_kwargs["reasoning"] == {"effort": "low"}
-    assert "Du er en klatrebot." in call_kwargs["input"]
+    assert "Du er en klatrebot." in call_kwargs["instructions"]
     assert "hvad så" in call_kwargs["input"]
     assert "42" in call_kwargs["input"]
     assert call_kwargs["tools"] == [{"type": "web_search"}]
@@ -118,7 +118,7 @@ async def test_reply_executes_memory_tool_when_enabled(monkeypatch, tmp_path, db
     monkeypatch.setattr(client, "_client", fake_client)
     monkeypatch.setattr(chat, "_get_db_conn", lambda: db)
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         assert conn is db
         assert run_id == 7
         assert name == "recall_community_memory"
@@ -131,6 +131,7 @@ async def test_reply_executes_memory_tool_when_enabled(monkeypatch, tmp_path, db
 
     assert result.text == "Vi har snakket om Spanien."
     assert fake_client.responses.create.await_count == 2
+    assert all(call.kwargs['instructions'] == 'Soul.' for call in fake_client.responses.create.await_args_list)
     first_call = fake_client.responses.create.await_args_list[0].kwargs
     assert any(tool.get("name") == "recall_community_memory" for tool in first_call["tools"])
     second_call = fake_client.responses.create.await_args_list[1].kwargs
@@ -177,7 +178,7 @@ async def test_reply_defaults_memory_recall_to_current_channel(monkeypatch, tmp_
     monkeypatch.setattr(chat, "_get_db_conn", lambda: db)
     calls = []
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         calls.append((name, arguments))
         return '{"answerable": true}'
 
@@ -254,7 +255,7 @@ async def test_reply_executes_multiple_memory_tool_rounds(monkeypatch, tmp_path,
 
     calls = []
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         calls.append((name, arguments))
         return '{"ok": true}'
 
@@ -304,7 +305,7 @@ async def test_reply_resolves_active_memory_run_by_name(monkeypatch, tmp_path, d
 
     calls = []
 
-    async def fake_execute(conn, *, run_id, name, arguments):
+    async def fake_execute(conn, *, run_id, name, arguments, settings):
         calls.append((run_id, name, arguments))
         return '{"ok": true}'
 

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-KlatreBot V2 is a Poetry-managed Python 3.11 Discord bot. Runtime code lives in `klatrebot_v2/`, with the entry point at `klatrebot_v2/__main__.py`. Discord-facing features are split into `klatrebot_v2/cogs/`; database access is under `klatrebot_v2/db/`; OpenAI and prompt handling are under `klatrebot_v2/llm/`. Tests live in `tests/unit/` and `tests/integration/`. Deployment assets are `install.sh`, `klatrebot.service`, and `.github/workflows/`. `klatrebot_v1/` is archived reference code, not the deployed app.
+KlatreBot V2 is a Poetry-managed Python 3.11 Discord bot. Runtime code lives in `klatrebot_v2/`, with the entry point at `klatrebot_v2/__main__.py`. Discord-facing features are split into `klatrebot_v2/cogs/`; database access is under `klatrebot_v2/db/`; OpenAI and prompt handling are under `klatrebot_v2/llm/`. Tests live in `tests/unit/` and `tests/integration/`. Deployment assets are `install.sh`, `klatrebot.service`, and `.github/workflows/`. `klatrebot_v1/` may exist as ignored local reference code; it is not deployed or distributed.
 
 ## Build, Test, and Development Commands
 

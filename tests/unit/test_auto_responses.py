@@ -34,6 +34,18 @@ def test_uge_pattern_requires_word_boundary():
 import pytest
 
 
+@pytest.mark.parametrize("name,field", [("downus", "downus_gif_url"), ("det_kan_man_ik", "pelle_gif_url")])
+async def test_private_gif_urls_come_from_configuration(monkeypatch, name, field):
+    from types import SimpleNamespace
+    from klatrebot_v2.cogs import auto_responses
+    settings = SimpleNamespace(downus_gif_url="", pelle_gif_url="")
+    monkeypatch.setattr(auto_responses, "get_settings", lambda: settings)
+    response = next(r for r in auto_responses.RESPONSES if r.name == name)
+    assert not await response.handler(None)
+    setattr(settings, field, "https://example.invalid/private.gif")
+    assert await response.handler(None) == "https://example.invalid/private.gif"
+
+
 def test_reaction_gifs_have_individual_two_minute_cooldowns():
     from datetime import datetime, timedelta, timezone
     from unittest.mock import MagicMock
