@@ -132,6 +132,8 @@ def implementation_hash():
     digest = hashlib.sha256()
     for module in (chat, answering, adjudication, routing, latest, pronouns, migrations, user_pronouns, tools, palace, search):
         digest.update(Path(module.__file__).read_bytes())
+    from klatrebot_v2.llm.prompt import prompt_fingerprint
+    digest.update(prompt_fingerprint().encode())
     return digest.hexdigest()
 
 

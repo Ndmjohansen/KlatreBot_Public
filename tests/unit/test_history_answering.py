@@ -197,6 +197,20 @@ async def test_failed_repair_is_never_rendered(monkeypatch, db):
     assert create.await_count == 6
 
 
+async def test_provider_error_without_code_has_stable_repair_feedback(monkeypatch, db, caplog):
+    import logging
+    class ProviderError(Exception):
+        code = None
+    create, _ = setup(monkeypatch, db, [route(), assessment(), draft(), verified()])
+    responses = list(create.side_effect)
+    create.side_effect = responses[:2] + [ProviderError()] + responses[2:]
+    with caplog.at_level(logging.INFO, logger=answering.__name__):
+        assert (await reply()).text == draft()["claims"][0]["text"]
+    repair = json.loads(create.await_args_list[3].kwargs["input"])
+    assert repair["validation_feedback"] == "ProviderError"
+    assert '"failures": ["ProviderError"]' in caplog.text
+
+
 def test_counterevidence_is_required_and_conflicts_are_distinct():
     sources = {"msg:1": source(), "msg:2": source(2, text="Jeg tager ikke toget")}
     with pytest.raises(ValueError):

@@ -74,6 +74,7 @@ if [ ! -f "$ENV_FILE" ]; then
 DISCORD_KEY=replace_me
 OPENAI_KEY=replace_me
 MODEL=gpt-5.6-luna
+SOUL_PATH=./prompts/soul.md
 DISCORD_MAIN_CHANNEL_ID=0
 DISCORD_SANDBOX_CHANNEL_ID=0
 ADMIN_USER_ID=0

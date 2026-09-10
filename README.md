@@ -18,6 +18,17 @@ poetry run pytest                  # unit
 poetry run pytest -m integration   # smoke boot (needs real DISCORD_KEY)
 ```
 
+## Prompts
+
+All runtime prompts and model-facing field descriptions live in [`prompts/`](prompts/README.md)
+as Markdown. Python supplies runtime data and enforces schemas and validation.
+Prompt edits take effect after restarting the relevant processes. Keep guidance
+general; put concrete regression examples in test fixtures rather than prompts.
+
+The personality prompt moved from `SOUL.MD` to `prompts/soul.md`. If an existing
+environment sets `SOUL_PATH=./SOUL.MD`, update it to `./prompts/soul.md` or remove
+the override to use the default. Relative paths resolve from the project root.
+
 ## Deploy
 
 Clone the repo to `/home/${TARGET_USER}/KlatreBot/KlatreBot_Public` (the `PROJECT_DIR` in `install.sh`), install Poetry for the service user, then:

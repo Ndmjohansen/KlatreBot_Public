@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Optional (defaults)
     model: str = "gpt-5.6-luna"
-    soul_path: str = "./SOUL.MD"
+    soul_path: str = "./prompts/soul.md"
     db_path: str = "./klatrebot_v2.db"
     user_aliases_config_path: str | None = None
     user_pronoun_seeds: dict[int, str] = {}

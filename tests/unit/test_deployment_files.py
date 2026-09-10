@@ -26,6 +26,8 @@ def test_install_and_ci_deploy_memory_systemd_units():
     assert "USER_ALIASES_CONFIG_PATH=" in install
     assert "MEMORY_COMPILER_MODEL=gpt-5.6-luna" in install
     assert "\nMODEL=gpt-5.6-luna\n" in install
+    assert "SOUL_PATH=./prompts/soul.md" in install
+    assert "SOUL_PATH=./prompts/soul.md" in workflow
     assert "MODEL=${{ vars.MODEL || 'gpt-5.6-luna' }}" in workflow
     assert "MEMORY_SEGMENT_MIN_TOTAL_CHARS=300" in install
     assert "MEMORY_SEGMENT_MIN_PARTICIPANTS=2" in install

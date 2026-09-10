@@ -1,12 +1,12 @@
 """discord.py Bot subclass. Owns DB connection + cog registration."""
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 
 import discord
 from discord.ext import commands
 
 from klatrebot_v2.db import connection, migrations, user_aliases
+from klatrebot_v2.llm.prompt import validate_prompts
 from klatrebot_v2.settings import get_settings
 
 
@@ -22,8 +22,8 @@ class KlatreBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         s = get_settings()
-        # Fail loudly if SOUL.MD is missing
-        Path(s.soul_path).read_text(encoding="utf-8")
+        # Fail before connecting when prompt assets are missing or invalid.
+        validate_prompts()
         # Open DB and run migrations
         self.db_conn = await connection.open(s.db_path)
         await migrations.run(self.db_conn, pronoun_seeds=s.user_pronoun_seeds)

@@ -10,6 +10,7 @@ import aiosqlite
 from pydantic import BaseModel, Field
 
 from klatrebot_v2.llm.client import get_client
+from klatrebot_v2.llm.prompt import render_prompt
 from klatrebot_v2.memory import store
 from klatrebot_v2.memory.segmentation import (
     SegmentCandidate,
@@ -690,81 +691,24 @@ async def summarize_rollup_with_llm(
 def _build_rollup_prompt(rollup: RollupInput) -> str:
     if rollup.period_type == "daily_ambient":
         return _build_daily_ambient_prompt(rollup)
-    schema = {
-        "title": "kort dansk titel",
-        "summary": "komprimeret dansk opsummering med eksplicit periode og vigtige konkurrerende minder holdt adskilt",
-        "key_items": ["kort dansk punkt med dato/status når relevant"],
-        "importance": "low|normal|high",
-        "tags": ["dansk tag", "pelle", "julefrokost"],
-    }
-    return (
-        "Du laver en højere-niveau dansk hukommelses-rollup for KlatreBot.\n"
-        f"Periode: {rollup.period_type} {rollup.period_start.isoformat()} til {rollup.period_end.isoformat()}.\n"
-        "Komprimer hårdt, men bevar tidslig orden, vigtige personer, steder, planer, beslutninger, præferencer og social lore. "
-        "Sammenbland ikke lignende minder: nævn konkurrerende datoer/perioder separat. "
-        "Skriv tydeligt planned/proposed/confirmed/uncertain på dansk når evidensen er uklar. "
-        "Output skal være gyldig JSON og på dansk.\n\n"
-        f"Returner denne form:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
-        f"KILDER:\n{json.dumps(rollup.sources, ensure_ascii=False)}"
-    )
+    return render_prompt("compiler_rollup", period_type=rollup.period_type,
+        period_start=rollup.period_start.isoformat(), period_end=rollup.period_end.isoformat(),
+        sources=json.dumps(rollup.sources, ensure_ascii=False))
 
 
 def _build_daily_ambient_prompt(rollup: RollupInput) -> str:
-    schema = {
-        "title": "kort dansk titel",
-        "summary": "kort dansk opsummering af løs daglig chat",
-        "key_items": ["kort dansk punkt med usikkerhed/status når relevant"],
-        "importance": "low",
-        "tags": ["dansk tag", "peak", "social lore"],
-    }
-    return (
-        "Du laver daglig ambient hukommelse for KlatreBot ud fra små/skippede chatstumper.\n"
-        f"Dag: {rollup.period_start.isoformat()} til {rollup.period_end.isoformat()}.\n"
-        "Dette er lav-prioritets baggrundshukommelse, ikke en egentlig samtaleopsummering. "
-        "Bevar løs social tekstur, små links/emner, jokes/lore, lette præferencer og åbne løkker, "
-        "men gør ikke uklare bemærkninger til sikre fakta. "
-        "Skriv tydeligt hvis noget kun er nævnt løst eller usikkert. "
-        "Output skal være gyldig JSON og på dansk.\n\n"
-        f"Returner denne form:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
-        f"KILDER:\n{json.dumps(rollup.sources, ensure_ascii=False)}"
-    )
+    return render_prompt("compiler_daily", period_start=rollup.period_start.isoformat(),
+        period_end=rollup.period_end.isoformat(), sources=json.dumps(rollup.sources, ensure_ascii=False))
 
 
 def _build_summary_prompt(segment: SegmentCandidate) -> str:
-    body = "\n".join(
-        f"[{m.discord_message_id}] {m.timestamp_utc.isoformat()} {m.user_display_name}: {m.content}"
-        for m in segment.messages
-        if not m.is_bot
-    )
-    schema = {
-        "topic_title": "kort dansk titel",
-        "summary": "dansk opsummering af samtalen",
-        "importance": "low|normal|high",
-        "skip_reason": None,
-        "memory_items": [
-            {
-                "type": "decision|plan|preference|fact|opinion|open_question|lore",
-                "subject": "person, emne eller gruppe",
-                "text": "dansk holdbar hukommelse",
-                "confidence": "low|medium|high",
-                "importance": "low|normal|high",
-                "tags": ["dansk tag", "kjugekull", "udendørs klatring"],
-                "speaker_ids": [123],
-                "source_message_ids": [456],
-            }
-        ],
-    }
-    return (
-        "Du komprimerer Discord-chat for KlatreBot til holdbar dansk hukommelse.\n"
-        "Bevar praktiske planer, beslutninger, præferencer, fakta, åbne spørgsmål og vigtig social/lore-kontekst. "
-        "Spring kun over hvis segmentet er klart tomt, usammenhængende eller uden brugbar hukommelse. "
-        "Lav tags som rene danske hukommelsesnøgler, også når chatten bruger engelsk/blandet sprog. "
-        "Tags skal være lowercase, korte, konkrete begreber i ental hvor naturligt, fx kjugekull, tobi, udendørs klatring, klatretur. "
-        "Undgå sætninger, datoer som tags, emojis og jokes medmindre joken/lore er selve emnet. "
-        "Brug kun de givne beskeder som grundlag, og referer til message ids i source_message_ids.\n\n"
-        f"Returner gyldig JSON med denne form:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
-        f"BESKEDER:\n{body}"
-    )
+    body = json.dumps([
+        {"message_id": m.discord_message_id, "author_id": m.user_id,
+         "author_name": m.user_display_name, "timestamp": m.timestamp_utc.isoformat(),
+         "content": m.content}
+        for m in segment.messages if not m.is_bot
+    ], ensure_ascii=False)
+    return render_prompt("compiler_segment", messages=body)
 
 
 def _normalize_summary(summary: SegmentSummary, segment: SegmentCandidate) -> SegmentSummary:
