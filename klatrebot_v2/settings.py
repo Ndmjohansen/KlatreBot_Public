@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     admin_user_id: int
 
     # Optional (defaults)
-    model: str = "gpt-5.6-terra"
+    model: str = "gpt-5.6-luna"
     soul_path: str = "./SOUL.MD"
     db_path: str = "./klatrebot_v2.db"
     user_aliases_config_path: str | None = None

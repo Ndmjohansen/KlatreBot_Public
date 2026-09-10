@@ -14,14 +14,18 @@ DEADLINE_SECONDS = 60
 ROUTING_SECONDS = 10
 LIMITATIONS = {
     "bounded": "Jeg fandt ikke belæg for det i de kilder, jeg undersøgte.",
-    "incomplete": "Jeg nåede ikke at undersøge historikken tilstrækkeligt.",
+    "incomplete": "Jeg kunne ikke undersøge historikken tilstrækkeligt.",
     "unavailable": "Jeg kunne ikke slå historikken op lige nu.",
 }
 CLARIFY = "Mener du noget fra vores chathistorik eller et generelt spørgsmål?"
 PERSON_CLARIFY = "Hvilken person mener du? Brug gerne en Discord-mention."
 INTERPRETATION_LIMIT = "Jeg fandt relevante beskeder, men er ikke sikker nok på, hvordan de skal forstås, til at give et pålideligt svar."
+ASSESSMENT_LIMIT = "Jeg kunne ikke vurdere kilderne sikkert nok til at svare."
+TIMEOUT_LIMIT = "Jeg nåede ikke at undersøge historikken tilstrækkeligt."
 DRAFT_INSTRUCTIONS = """Skriv naturlig dansk prosa der besvarer den historiske del
-alene ud fra admitted_evidence og originalkilder. Hver sammenhængende sætning er
+alene ud fra admitted_evidence og originalkilder. messages er beskedtabellen og
+author er indeks i authors. sources og context er handles; kontekst må ikke
+overtage rollen som primært belæg. Hver sammenhængende sætning er
 en claim med ordrette kildeuddrag og handles; al prosa skal ligge i claims.
 Skriv svaret med egne ord, som i en almindelig samtale, ikke som en kildegennemgang.
 Besvar det præcise spørgsmål kort; tag ikke sidehistorier med blot fordi de blev fundet.
@@ -84,11 +88,18 @@ class AnswerSession:
         self.events = []
         self.retries = 0
         self.failures = []
+        self.timed_out = False
 
     def client(self, client):
         async def create(**kwargs):
             started = time.monotonic()
             event = dict(phase=self.phase)
+            try:
+                data = json.loads(kwargs.get("input", ""))
+                if isinstance(data, dict) and "messages" in data:
+                    event.update(primary_count=len(data["sources"]), context_count=len(data["context"]))
+            except (ValueError, TypeError):
+                pass
             try:
                 response = await client.responses.create(**kwargs)
                 usage = getattr(response, "usage", None)
@@ -107,7 +118,7 @@ class AnswerSession:
 
     def render(self):
         if not self.parts:
-            return LIMITATIONS["incomplete"]
+            return TIMEOUT_LIMIT if self.timed_out else LIMITATIONS["unavailable"]
         mixed = self.route == "mixed"
         return "\n\n".join(("Generel information: " if p.kind == "general" else "Fra chathistorikken: ")
                             + p.render() if mixed else p.render() for p in self.parts)
@@ -193,6 +204,7 @@ async def answer(session, *, conn, settings, client, run_id, full_input, questio
 async def historical(session, result, part, *, conn, settings, client, run_id,
                      channel_id, recent, invoking_message_id):
     record = result.record
+    assessment_repairs = 0
     args = part.arguments(channel_id)
     author_pronouns = await pronouns.author_pronouns(conn)
 
@@ -255,15 +267,27 @@ async def historical(session, result, part, *, conn, settings, client, run_id,
         record.context = {h: m for h, m in record.context.items() if h not in record.sources}
         session.phase = "assessment"
         if record.sources:
-            try:
-                record.assessment = await evidence.assess(client, settings.model, part.question, record.sources, record.context)
-            except ValueError as exc:
-                # A malformed or misattributed assessment is insufficient
-                # evidence, not permission to skip the one bounded reformulation.
-                record.failures.append("assessment:" + type(exc).__name__)
-                record.assessment = evidence.Assessment(status="not_found", evidence=[])
-                if attempt == 1:
-                    record.coverage = "incomplete"
+            feedback = None
+            while True:
+                session.phase = "assessment_repair" if feedback else "assessment"
+                try:
+                    record.assessment = await evidence.assess(client, settings.model, part.question,
+                        record.sources, record.context, feedback=feedback)
+                    break
+                except evidence.EvidenceValidationError as exc:
+                    record.failures.append("assessment:" + exc.code)
+                    session.events.append(dict(phase=session.phase, reason=exc.code,
+                        primary_count=len(record.sources), context_count=len(record.context)))
+                    if assessment_repairs:
+                        result.text = ASSESSMENT_LIMIT
+                        return
+                    assessment_repairs += 1
+                    session.retries += 1
+                    feedback = exc.code
+                except Exception as exc:
+                    record.failures.append("assessment:" + type(exc).__name__)
+                    result.text = ASSESSMENT_LIMIT
+                    return
         if record.assessment.status not in {"not_found", "uncertain"}:
             break
         if attempt == 0:
@@ -274,8 +298,9 @@ async def historical(session, result, part, *, conn, settings, client, run_id,
         return
     admitted = {c.source_handle for c in record.assessment.evidence}
     data = dict(question=part.question, admitted_evidence=record.assessment.model_dump(),
-                sources=[record.sources[h] for h in admitted],
-                latest_selection=result.latest.model_dump() if result.latest else None)
+                **evidence.compact_sources({h: m for h, m in record.sources.items() if h in admitted},
+                                           record.context),
+                latest_selection=evidence.selection_metadata(result.latest))
     for attempt in range(2):
         session.phase = "repair" if attempt else "draft"
         try:

@@ -73,6 +73,7 @@ if [ ! -f "$ENV_FILE" ]; then
     install -m 600 -o root -g root /dev/stdin "$ENV_FILE" <<EOF
 DISCORD_KEY=replace_me
 OPENAI_KEY=replace_me
+MODEL=gpt-5.6-luna
 DISCORD_MAIN_CHANNEL_ID=0
 DISCORD_SANDBOX_CHANNEL_ID=0
 ADMIN_USER_ID=0

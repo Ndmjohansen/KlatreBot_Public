@@ -403,7 +403,7 @@ async def test_chat_once_includes_recent_cli_context(monkeypatch, db):
 
     assert answer == "Ja, det er stadig planen."
     first_call = fake_client.responses.create.await_args.kwargs
-    assert first_call["model"] == "gpt-5.6-terra"
+    assert first_call["model"] == "gpt-5.6-luna"
     assert first_call["reasoning"] == {"effort": "low"}
     assert "RECENT CLI CHAT:" in first_call["input"]
     assert "Hvornår tager vi til Kjugekull?" in first_call["input"]

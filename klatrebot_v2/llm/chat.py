@@ -102,10 +102,13 @@ async def reply(
                     channel_id=channel_id, mentions=mentions, invoking_message_id=invoking_message_id,
                     session=session)
         except TimeoutError:
+            from klatrebot_v2.memory.answering import TIMEOUT_LIMIT
+            session.timed_out = True
             session.failures.append("DeadlineExceeded")
             for part in session.parts:
                 if part.text is None:
                     part.record.coverage = "incomplete"
+                    part.text = TIMEOUT_LIMIT
             return ChatReply(text=session.render(), sources=session.urls)
         except Exception as exc:
             session.failures.append(type(exc).__name__)
