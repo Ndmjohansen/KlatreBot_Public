@@ -93,6 +93,19 @@ async def test_general_has_no_memory_or_verifier_calls(monkeypatch, db):
     assert create.await_args.kwargs["tools"] == [{"type": "web_search"}]
 
 
+async def test_general_answer_keeps_context_used_to_interpret_followup(monkeypatch, db):
+    from klatrebot_v2.db.messages import MessageWithAuthor
+    create, tool = setup(monkeypatch, db, [route("general", question="Hvad vil du anbefale?"), "Et forslag."])
+    prior = "Jeg har højst 300 kroner og vil helst have noget til udendørs brug."
+    monkeypatch.setattr(chat.msg_db, "recent_with_authors", AsyncMock(return_value=[
+        MessageWithAuthor(**source(2, text=prior))]))
+    assert (await reply(question="Hvad vil du anbefale?")).text == "Et forslag."
+    data = json.loads(create.await_args.kwargs["input"])
+    assert data["question"] == "Hvad vil du anbefale?"
+    assert prior in data["conversation"]
+    tool.assert_not_awaited()
+
+
 @pytest.mark.parametrize("r", [route("ambiguous"), "invalid json", {"kind": "general", "too_many_parts": False, "parts": []}])
 async def test_ambiguous_and_invalid_route_search_first_then_clarify(monkeypatch, db, r):
     create, tool = setup(monkeypatch, db, [r], rows=[])
@@ -401,6 +414,23 @@ async def test_latest_failed_repair_never_dumps_selected_quote(monkeypatch, db):
     assert text == answering.INTERPRETATION_LIMIT
     assert "msg:" not in text and selected["quote"] not in text
     assert create.await_count == 5
+
+
+async def test_latest_context_reaches_draft_and_verifier_once(monkeypatch, db):
+    from klatrebot_v2.memory.latest import LatestSelection
+    create, _ = setup(monkeypatch, db, [route(people_names=["Anna"], latest_authored=True),
+        draft(), verified()])
+    neighbor = dict(source(2, 2, "Hvordan kommer du derhen?"), source_handle="msg:2")
+    selection = LatestSelection(selected=dict(source(), source_handle="msg:1", quote="Jeg tager toget"),
+                                uncertain=False, context={"msg:2": neighbor})
+    monkeypatch.setattr(answering, "select_latest", AsyncMock(return_value=selection))
+    assert (await reply(question="Hvad skrev Anna senest om transport?")).text == draft()["claims"][0]["text"]
+    for call in create.await_args_list[1:]:
+        payload = json.loads(call.kwargs["input"])
+        assert payload["context"] == ["msg:2"]
+        assert "context" not in payload["latest_selection"]
+        assert payload["latest_selection"]["selected"] == {"source_handle": "msg:1"}
+        assert sum(m["content"] == neighbor["content"] for m in payload["messages"]) == 1
 
 
 async def test_routing_timeout_still_searches(monkeypatch, db):

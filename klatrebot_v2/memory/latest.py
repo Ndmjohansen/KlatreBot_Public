@@ -15,6 +15,7 @@ class LatestSelection(BaseModel):
     checked_handles: list[str] = Field(default_factory=list)
     failures: list[str] = Field(default_factory=list)
     watermark: str | None = None
+    context: dict[str, dict] = Field(default_factory=dict)
 
     def render(self):
         return render(self.selected, uncertain=self.uncertain)
@@ -54,6 +55,7 @@ async def select_latest(conn, *, run_id, arguments, initial, settings, client, q
     args.update(scope, people_names=None)
     selected = None
     seen = {}
+    supplied_context = {}
     unresolved = {}
     boundary_reached = False
     failures = []
@@ -70,6 +72,7 @@ async def select_latest(conn, *, run_id, arguments, initial, settings, client, q
                         arguments={"source_handles": fresh, "context_radius": 2}, settings=settings))
                     context = [m for m in context if not m["is_bot"] and m["discord_message_id"] != invoking_message_id]
                     by_id = {f"msg:{m['discord_message_id']}": m for m in context}
+                    supplied_context.update(by_id)
                     candidates = []
                     for handle in fresh:
                         m = by_id.get(handle)
@@ -87,6 +90,7 @@ async def select_latest(conn, *, run_id, arguments, initial, settings, client, q
                             arguments={"source_handles": [c["source_handle"] for c in uncertain], "context_radius": 5},
                             settings=settings))
                         expanded = [m for m in expanded if not m["is_bot"] and m["discord_message_id"] != invoking_message_id]
+                        supplied_context.update({f"msg:{m['discord_message_id']}": m for m in expanded})
                         verdicts.update(await classify(client, settings.model, question, scope, uncertain, expanded))
                     for c in candidates:
                         handle = c["source_handle"]
@@ -120,7 +124,8 @@ async def select_latest(conn, *, run_id, arguments, initial, settings, client, q
     logging.getLogger(__name__).info("latest_evidence selected=%s checked=%d unresolved=%d bounded=%s",
         selected["source_handle"] if selected else None, len(seen), len(unresolved), uncertain)
     result = LatestSelection(selected=selected, uncertain=uncertain,
-        checked_handles=list(seen), failures=failures, watermark=payload.get("indexing_watermark"))
+        checked_handles=list(seen), failures=failures, watermark=payload.get("indexing_watermark"),
+        context={h: m for h, m in supplied_context.items() if not selected or h != selected["source_handle"]})
     return result if structured else result.render()
 
 

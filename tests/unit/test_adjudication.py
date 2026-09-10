@@ -87,7 +87,9 @@ async def test_non_excuse_latest_policy_with_real_source_expansion(monkeypatch, 
             timestamp_utc=datetime(2026, 9, m["day"], tzinfo=timezone.utc), content=m["text"])
     # The opt-in evaluator separately checks these judgments against the real
     # model. Here isolate the policy, using real retrieval and source expansion.
+    supplied_context = {}
     async def judge(client, model, question, scope, candidates, context):
+        supplied_context.update({f"msg:{m['discord_message_id']}": m for m in context})
         return {c["source_handle"]: Verdict(source_handle=c["source_handle"],
             relevance=case["expected"][str(c["discord_message_id"])],
             quote=c["content"] if case["expected"][str(c["discord_message_id"])] == "relevant" else "")
@@ -98,8 +100,11 @@ async def test_non_excuse_latest_policy_with_real_source_expansion(monkeypatch, 
                 date_end="2026-09-10T00:00:00+00:00")
     initial = await tools.execute_memory_tool(db, run_id=0, settings=settings,
         name="recall_community_memory", arguments=args)
-    answer = await latest.select_latest(db, run_id=0, arguments=args, initial=initial,
-        settings=settings, client=None, question=case["question"])
+    selection = await latest.select_latest(db, run_id=0, arguments=args, initial=initial,
+        settings=settings, client=None, question=case["question"], structured=True)
+    assert selection.context == {h: m for h, m in supplied_context.items()
+                                 if h != selection.selected["source_handle"]}
+    answer = selection.render()
     chosen = next(m for m in case["messages"] if m["id"] == case["selected"])
     assert chosen["text"] in answer
     assert "Det seneste relevante" in answer

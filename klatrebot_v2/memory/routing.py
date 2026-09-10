@@ -54,7 +54,11 @@ class Route(StrictModel):
 
 
 INSTRUCTIONS = """Klassificér den aktuelle forespørgsel før besvarelse:
-general: almen viden uden spørgsmål om denne gruppes personer eller historik.
+general: almen viden, råd og nye forslag ud fra oplysninger i forespørgslen.
+Vælg efter hvad svaret kræver, ikke alene efter personnavne, mentions eller emneoverlap
+med tidligere samtale. Oplyste ønsker kan bruges direkte; nye forslag kræver ikke
+bevis for at nogen tidligere har fremsat dem. Påstande om hvad gruppens personer
+tidligere har sagt, gjort eller foretrukket kræver derimod historisk belæg.
 history: hvad nogen her skrev, mente, planlagde, gjorde eller oplevede; også
 tekniske, transport- og arbejdspladsspørgsmål der refererer til samtalen.
 ambiguous: både almen og historisk læsning er plausibel. Søg først ved tvivl.

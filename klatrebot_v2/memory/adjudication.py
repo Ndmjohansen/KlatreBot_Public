@@ -219,7 +219,7 @@ def compact_sources(sources, context=None):
 def selection_metadata(selection):
     if selection is None:
         return None
-    data = selection.model_dump()
+    data = selection.model_dump(exclude={"context"})
     if selection.selected:
         data["selected"] = {"source_handle": selection.selected["source_handle"]}
     return data

@@ -187,7 +187,8 @@ async def answer(session, *, conn, settings, client, run_id, full_input, questio
                 session.phase = "general"
                 response = await client.responses.create(model=settings.model, instructions=soul +
                     "\nBesvar kun den generelle del. Fremsæt ingen påstande om gruppens private historik.",
-                    input=part.question, tools=[{"type": "web_search"}], reasoning={"effort": "low"},
+                    input=json.dumps(dict(question=part.question, conversation=full_input), ensure_ascii=False),
+                    tools=[{"type": "web_search"}], reasoning={"effort": "low"},
                     text={"verbosity": "medium"}, include=["web_search_call.action.sources"])
                 from klatrebot_v2.llm.chat import _extract_sources
                 result.text = response.output_text or "Jeg kunne ikke besvare den generelle del."
@@ -253,6 +254,9 @@ async def historical(session, result, part, *, conn, settings, client, run_id,
             selected = pronouns.enrich([result.latest.selected], author_pronouns)[0]
             result.latest.selected = selected
             record.sources = {selected["source_handle"]: selected}
+            record.context = {h: dict(m, source_handle=h) for h, m in result.latest.context.items()}
+            record.context = {m["source_handle"]: m for m in pronouns.enrich(
+                list(record.context.values()), author_pronouns)}
             record.assessment = evidence.Assessment(status="supported", evidence=[evidence.Citation(
                 source_handle=selected["source_handle"], quote=selected["quote"], role="support")])
             break
@@ -316,6 +320,8 @@ async def historical(session, result, part, *, conn, settings, client, run_id,
             data["rejected_draft"] = draft.model_dump()
             data["verification_feedback"] = record.verification_feedback
         except Exception as exc:
-            record.failures.append(type(exc).__name__)
+            code = getattr(exc, "code", type(exc).__name__)
+            record.failures.append(code)
+            data["validation_feedback"] = code
         if attempt == 0:
             session.retries += 1

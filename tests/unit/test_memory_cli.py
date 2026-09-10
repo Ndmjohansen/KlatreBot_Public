@@ -455,7 +455,7 @@ async def test_chat_once_includes_known_user_aliases(monkeypatch, db):
 
     first_call = fake_client.responses.create.await_args.kwargs
     assert "KNOWN_USER_ALIASES:" in first_call["input"]
-    assert "Tobi / Tobias -> 42" in first_call["input"]
+    assert "Tobi / Tobias -> <@42>" in first_call["input"]
 
 
 async def test_chat_once_executes_multiple_memory_tool_rounds(monkeypatch, db):

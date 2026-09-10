@@ -151,7 +151,7 @@ async def format_alias_prompt_map(conn: aiosqlite.Connection, *, limit: int = 20
     for user_id, alias in rows:
         grouped.setdefault(int(user_id), []).append(str(alias))
     return "\n".join(
-        f"{' / '.join(_dedupe_preserve_order(aliases))} -> {user_id}"
+        f"{' / '.join(_dedupe_preserve_order(aliases))} -> <@{user_id}>"
         for user_id, aliases in grouped.items()
     )
 
