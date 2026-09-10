@@ -8,6 +8,7 @@ import json
 import re
 import time
 
+from klatrebot_v2.llm.prompt import load_prompt
 from klatrebot_v2.memory.corpus import load_corpus, utc
 from klatrebot_v2.memory.palace import embed
 from klatrebot_v2.memory.retrieval import MemoryResult, RecallResult
@@ -81,16 +82,16 @@ async def search(conn, request, palace=None, client=None, *, prepared_docs=None,
         return RecallResult(answerable=False)
     if request.get('order') == 'latest' and request.get('memory_types') and 'raw_message' not in request['memory_types']:
         return RecallResult(answerable=False, status='invalid_arguments', coverage={
-            'instruction': 'latest søger rå beskeder, men memory_types udelukker dem. Gentag med memory_types=null og bevar person, kanal og datoer. Brug relevance hvis spørgsmålet ikke handler om den seneste forekomst.'})
+            'instruction': load_prompt("tool_feedback", "latest_types")})
     docs = filtered(prepared_docs if prepared_docs is not None else await load_corpus(conn, request["run_id"]), request)
     latest = request.get("order") == "latest"
-    coverage = {"exhaustive": False, "instruction": "Kontrollér relevans og afsender i kilderne. Sig 'det seneste jeg fandt' ved begrænset søgning."}
+    coverage = {"exhaustive": False, "instruction": load_prompt("tool_feedback", "source_review")}
     cursor = None
     chronological = []
     if latest:
         if request.get("person_role", "author") != "author" or not request.get("people"):
             return RecallResult(answerable=False, status="invalid_arguments",
-                                coverage={"instruction": "latest kræver en bestemt afsender og person_role=author. Brug relevance ved almindelige historiske spørgsmål om fællesskabet. Gæt ikke en person for at udfylde et filter."})
+                                coverage={"instruction": load_prompt("tool_feedback", "latest_author")})
         docs = [d for d in docs if d.kind == "raw_message"]
         end = utc(request["date_end"]) if request.get("date_end") else datetime.now(timezone.utc)
         page_before = None

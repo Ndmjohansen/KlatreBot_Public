@@ -39,6 +39,15 @@ def verified(valid=True):
     return dict(source_reading="Kildens indhold vurderet selvstændigt.", valid=valid, supported_claims=[valid], feedback="" if valid else "Bevar afsenderen og gengiv kun det underbyggede.")
 
 
+def model_input(raw):
+    data = json.loads(raw)
+    if "messages" in data:
+        rows = {m["source_handle"]: dict(m, **data["authors"][m["author"]]) for m in data["messages"]}
+        for role in ("sources", "context"):
+            data[role] = [rows[h] for h in data[role]]
+    return data
+
+
 def setup(monkeypatch, db, responses, *, rows=None, status="ok", kind="raw_message"):
     settings = SimpleNamespace(memory_enabled=True, memory_backend="mempalace",
         memory_active_run_name=None, memory_active_run_id=2, model="test", gpt_recent_message_count=25)
@@ -82,6 +91,19 @@ async def test_general_has_no_memory_or_verifier_calls(monkeypatch, db):
     tool.assert_not_awaited()
     assert create.await_count == 2
     assert create.await_args.kwargs["tools"] == [{"type": "web_search"}]
+
+
+async def test_general_answer_keeps_context_used_to_interpret_followup(monkeypatch, db):
+    from klatrebot_v2.db.messages import MessageWithAuthor
+    create, tool = setup(monkeypatch, db, [route("general", question="Hvad vil du anbefale?"), "Et forslag."])
+    prior = "Jeg har højst 300 kroner og vil helst have noget til udendørs brug."
+    monkeypatch.setattr(chat.msg_db, "recent_with_authors", AsyncMock(return_value=[
+        MessageWithAuthor(**source(2, text=prior))]))
+    assert (await reply(question="Hvad vil du anbefale?")).text == "Et forslag."
+    data = json.loads(create.await_args.kwargs["input"])
+    assert data["question"] == "Hvad vil du anbefale?"
+    assert prior in data["conversation"]
+    tool.assert_not_awaited()
 
 
 @pytest.mark.parametrize("r", [route("ambiguous"), "invalid json", {"kind": "general", "too_many_parts": False, "parts": []}])
@@ -142,7 +164,7 @@ async def test_recent_human_evidence_is_allowed_after_search(monkeypatch, db):
     monkeypatch.setattr(chat.msg_db, "recent_with_authors", AsyncMock(return_value=[SourceMessage(**source())]))
     assert (await reply()).text == draft()["claims"][0]["text"]
     assert tool.await_count == 1
-    sent = json.loads(create.await_args_list[1].kwargs["input"])
+    sent = model_input(create.await_args_list[1].kwargs["input"])
     assert sent["sources"][0]["source_handle"] == "msg:1"
 
 
@@ -175,6 +197,20 @@ async def test_failed_repair_is_never_rendered(monkeypatch, db):
     assert create.await_count == 6
 
 
+async def test_provider_error_without_code_has_stable_repair_feedback(monkeypatch, db, caplog):
+    import logging
+    class ProviderError(Exception):
+        code = None
+    create, _ = setup(monkeypatch, db, [route(), assessment(), draft(), verified()])
+    responses = list(create.side_effect)
+    create.side_effect = responses[:2] + [ProviderError()] + responses[2:]
+    with caplog.at_level(logging.INFO, logger=answering.__name__):
+        assert (await reply()).text == draft()["claims"][0]["text"]
+    repair = json.loads(create.await_args_list[3].kwargs["input"])
+    assert repair["validation_feedback"] == "ProviderError"
+    assert '"failures": ["ProviderError"]' in caplog.text
+
+
 def test_counterevidence_is_required_and_conflicts_are_distinct():
     sources = {"msg:1": source(), "msg:2": source(2, text="Jeg tager ikke toget")}
     with pytest.raises(ValueError):
@@ -184,6 +220,120 @@ def test_counterevidence_is_required_and_conflicts_are_distinct():
     ev.validate_assessment(ev.Assessment(**assessment("conflicting", [citation(), counter])), sources)
     with pytest.raises(ValueError):
         ev.validate_assessment(ev.Assessment(**assessment("conflicting", [counter])), sources)
+
+
+@pytest.mark.parametrize("citations,status,code", [
+    ([citation("msg:missing")], "supported", "unknown_handle"),
+    ([citation("msg:2", "Naboens ord")], "supported", "ineligible_primary_source"),
+    ([citation("msg:2", "Naboens ord", "counterevidence")], "contradicted", "ineligible_primary_source"),
+    ([citation(quote="Naboens ord")], "supported", "nonliteral_excerpt"),
+    ([citation(quote="Jeg tager [...] toget")], "supported", "nonliteral_excerpt"),
+    ([citation(quote="")], "supported", "empty_excerpt"),
+    ([citation(quote="x" * 1001)], "supported", "excerpt_too_long"),
+    ([citation(role="context")], "supported", "support_required"),
+    ([citation()], "not_found", "not_found_has_evidence"),
+    ([citation(), citation(role="counterevidence")], "supported", "opposing_roles_require_conflicting"),
+    ([citation(), citation(role="counterevidence"), citation("msg:2", "Naboens ord", "context")],
+     "conflicting", "distinct_opposing_sources_required"),
+])
+def test_assessment_validation_reason_codes(citations, status, code):
+    with pytest.raises(ev.EvidenceValidationError) as error:
+        ev.validate_assessment(ev.Assessment(**assessment(status, citations)),
+            {"msg:1": source()}, {"msg:2": source(2, 2, "Naboens ord")})
+    assert error.value.code == code
+
+
+async def test_context_citation_survives_draft_and_verification(monkeypatch, db):
+    citations = [citation(), citation("msg:2", "Tager du toget?", "context")]
+    create, _ = setup(monkeypatch, db,
+        [route(people_names=["Anne"]), assessment(citations=citations),
+         draft(citations=citations), verified()],
+        rows=[source(author=2), source(2, 1, "Tager du toget?")])
+    assert (await reply()).text == draft()["claims"][0]["text"]
+    for call in create.await_args_list[1:]:
+        data = model_input(call.kwargs["input"])
+        assert data["sources"][0]["user_id"] == 2
+        assert data["context"][0]["user_id"] == 1
+
+
+def test_draft_cannot_promote_context_or_change_admitted_roles():
+    record = ev.EvidenceRecord(sources={"msg:1": source()}, context={"msg:2": source(2, 2)},
+        assessment=ev.Assessment(**assessment(citations=[citation(), citation("msg:2", role="context")])))
+    with pytest.raises(ev.EvidenceValidationError, match="ineligible_primary_source"):
+        ev.validate_draft(ev.Draft(**draft(citations=[citation("msg:2")])), record)
+    with pytest.raises(ev.EvidenceValidationError, match="citation_role_changed"):
+        ev.validate_draft(ev.Draft(**draft(citations=[citation(role="counterevidence")])), record)
+    with pytest.raises(ev.EvidenceValidationError, match="primary_citation_required"):
+        ev.validate_draft(ev.Draft(**draft(citations=[citation("msg:2", role="context")])), record)
+
+
+def test_compaction_preserves_all_messages_metadata_and_roles():
+    rows = {f"msg:{i}": dict(source(i, i % 3, f"Ordret tekst {i}\n  med mellemrum æøå"),
+                            source_handle=f"msg:{i}", author_pronouns="brug navnet") for i in range(187)}
+    primary = {h: m for h, m in rows.items() if m["user_id"] == 0}
+    payload = ev.compact_sources(primary, rows)
+    assert len(payload["messages"]) == 187
+    assert len(payload["authors"]) == 3
+    decoded = model_input(json.dumps(payload))
+    restored = {m["source_handle"]: {k: v for k, v in m.items() if k != "author"}
+                for m in decoded["sources"] + decoded["context"]}
+    assert restored == rows
+    assert set(payload["sources"]) == set(primary)
+    assert set(payload["context"]) == set(rows) - set(primary)
+    assert len(json.dumps(payload)) < len(json.dumps(dict(sources=list(primary.values()), context=list(rows.values()))))
+
+
+@pytest.mark.parametrize("bad", ["not json", {}, assessment("contradicted")])
+async def test_failed_assessment_repair_preserves_coverage_and_logs_reason(monkeypatch, db, caplog, bad):
+    import logging
+    create, tool = setup(monkeypatch, db, [route(), bad, bad])
+    with caplog.at_level(logging.INFO, logger=answering.__name__):
+        assert (await reply()).text == answering.ASSESSMENT_LIMIT
+    event = json.loads(caplog.records[-1].message.split("memory_answer ", 1)[1])
+    assert event["parts"][0]["coverage"] == "bounded"
+    assert create.await_count == 3 and tool.await_count == 2
+    assert '"phase": "assessment_repair"' in caplog.text
+    assert '"primary_count": 1' in caplog.text and '"input_tokens": 10' in caplog.text
+    assert '"reason":' in caplog.text
+    assert "Jeg tager toget" not in caplog.text and "not json" not in caplog.text
+
+
+async def test_malformed_assessment_can_be_repaired(monkeypatch, db):
+    create, tool = setup(monkeypatch, db, [route(), "not json", assessment(), draft(), verified()])
+    assert (await reply()).text == draft()["claims"][0]["text"]
+    assert json.loads(create.await_args_list[2].kwargs["input"])["validation_feedback"] == "malformed_assessment"
+    assert tool.await_count == 2
+
+
+async def test_only_insufficient_evidence_reformulates_and_repair_budget_is_shared(monkeypatch, db):
+    create, tool = setup(monkeypatch, db, [route(reformulation="tog transport"),
+        "not json", assessment("not_found", []), "not json"])
+    assert (await reply()).text == answering.ASSESSMENT_LIMIT
+    searches = [c.kwargs["arguments"] for c in tool.await_args_list
+                if c.kwargs["name"] == "recall_community_memory"]
+    assert len(searches) == 2 and searches[1]["query"] == "tog transport"
+    assert create.await_count == 4
+
+
+def test_bot_sources_remain_ineligible_even_as_context():
+    bot = dict(source(), is_bot=True)
+    with pytest.raises(ev.EvidenceValidationError, match="bot_source"):
+        ev.validate_assessment(ev.Assessment(**assessment("uncertain", [citation(role="context")])),
+                               {}, {"msg:1": bot})
+
+
+async def test_assessment_repair_uses_shared_deadline(monkeypatch, db):
+    create, _ = setup(monkeypatch, db, [route(), "not json"])
+    responses = iter(create.side_effect)
+    async def slow(**kwargs):
+        response = next(responses, None)
+        if response is not None:
+            return response
+        await asyncio.sleep(10)
+    create.side_effect = slow
+    monkeypatch.setattr(answering, "DEADLINE_SECONDS", .05)
+    assert (await reply()).text == answering.TIMEOUT_LIMIT
+    assert create.await_count == 3
 
 
 @pytest.mark.parametrize("text", ["Nej, kun en plan blev nævnt.", "**Ja**, det gjorde personen.", "No, it was only planned."])
@@ -225,7 +375,7 @@ async def test_shared_deadline_returns_limitation_without_excerpts(monkeypatch, 
     create.side_effect = slow
     monkeypatch.setattr(answering, "DEADLINE_SECONDS", .05)
     text = (await reply()).text
-    assert answering.LIMITATIONS["incomplete"] in text
+    assert answering.TIMEOUT_LIMIT in text
     assert "Jeg tager toget" not in text
     assert draft()["claims"][0]["text"] not in text
 
@@ -241,10 +391,10 @@ async def test_stored_pronouns_reach_draft_and_verifier_after_rename(monkeypatch
     create, _ = setup(monkeypatch, db, [route(), assessment(), draft(), verified()], rows=rows)
     await reply()
     for call_index in (1, 3):
-        sent = json.loads(create.await_args_list[call_index].kwargs["input"])
+        sent = model_input(create.await_args_list[call_index].kwargs["input"])
         assert {s["user_id"]: s["author_pronouns"] for s in sent["sources"]} == {
             1: "hun/hende", 2: "hun/hende", 3: "han/ham"}
-    sent = json.loads(create.await_args_list[2].kwargs["input"])
+    sent = model_input(create.await_args_list[2].kwargs["input"])
     assert sent["sources"][0]["author_pronouns"] == "hun/hende"
     assert sent["sources"][0]["content"] == source()["content"]
 
@@ -278,6 +428,23 @@ async def test_latest_failed_repair_never_dumps_selected_quote(monkeypatch, db):
     assert text == answering.INTERPRETATION_LIMIT
     assert "msg:" not in text and selected["quote"] not in text
     assert create.await_count == 5
+
+
+async def test_latest_context_reaches_draft_and_verifier_once(monkeypatch, db):
+    from klatrebot_v2.memory.latest import LatestSelection
+    create, _ = setup(monkeypatch, db, [route(people_names=["Anna"], latest_authored=True),
+        draft(), verified()])
+    neighbor = dict(source(2, 2, "Hvordan kommer du derhen?"), source_handle="msg:2")
+    selection = LatestSelection(selected=dict(source(), source_handle="msg:1", quote="Jeg tager toget"),
+                                uncertain=False, context={"msg:2": neighbor})
+    monkeypatch.setattr(answering, "select_latest", AsyncMock(return_value=selection))
+    assert (await reply(question="Hvad skrev Anna senest om transport?")).text == draft()["claims"][0]["text"]
+    for call in create.await_args_list[1:]:
+        payload = json.loads(call.kwargs["input"])
+        assert payload["context"] == ["msg:2"]
+        assert "context" not in payload["latest_selection"]
+        assert payload["latest_selection"]["selected"] == {"source_handle": "msg:1"}
+        assert sum(m["content"] == neighbor["content"] for m in payload["messages"]) == 1
 
 
 async def test_routing_timeout_still_searches(monkeypatch, db):
@@ -314,7 +481,7 @@ async def test_neighbor_is_context_not_target_author_evidence(monkeypatch, db):
     create, _ = setup(monkeypatch, db, [route(people_names=["Anne"]), assessment(), draft(), verified()],
                        rows=[target, neighbor])
     await reply()
-    sent = json.loads(create.await_args_list[1].kwargs["input"])
+    sent = model_input(create.await_args_list[1].kwargs["input"])
     assert [s["user_id"] for s in sent["sources"]] == [2]
     assert [s["user_id"] for s in sent["context"]] == [1]
 
@@ -330,7 +497,7 @@ async def test_mixed_deadline_preserves_completed_general_part(monkeypatch, db):
     monkeypatch.setattr(answering, "DEADLINE_SECONDS", .04)
     text = (await reply()).text
     assert "Generel information: Almen forklaring." in text
-    assert "Fra chathistorikken: " + answering.LIMITATIONS["incomplete"] in text
+    assert "Fra chathistorikken: " + answering.TIMEOUT_LIMIT in text
 
 
 async def test_mixed_latest_does_not_exit_before_general_part(monkeypatch, db):
@@ -348,7 +515,7 @@ async def test_mixed_latest_does_not_exit_before_general_part(monkeypatch, db):
 
 async def test_contradiction_without_counterevidence_fails_closed(monkeypatch, db):
     create, _ = setup(monkeypatch, db, [route(), assessment("contradicted"), assessment("contradicted")])
-    assert (await reply()).text == answering.LIMITATIONS["incomplete"]
+    assert (await reply()).text == answering.ASSESSMENT_LIMIT
     assert create.await_count == 3
 
 
@@ -358,7 +525,7 @@ async def test_conflicting_sources_are_passed_to_whole_draft_verifier(monkeypatc
         draft("Kilderne modsiger hinanden.", [citation(), counter]), verified()],
         rows=[source(), source(2, text="Jeg tager ikke toget")])
     assert (await reply()).text == "Kilderne modsiger hinanden."
-    sent = json.loads(create.await_args.kwargs["input"])
+    sent = model_input(create.await_args.kwargs["input"])
     assert sent["assessment"]["status"] == "conflicting"
     assert {s["source_handle"] for s in sent["sources"]} == {"msg:1", "msg:2"}
 
@@ -381,7 +548,7 @@ async def test_router_does_not_treat_invocation_as_prior_conversation(monkeypatc
     monkeypatch.setattr(chat.msg_db, "recent_with_authors", AsyncMock(return_value=[
         SourceMessage(**source(99, text="!gpt Hvad med toget?"))]))
     await reply(invoking_message_id=99)
-    sent = json.loads(create.await_args.kwargs["input"])
+    sent = model_input(create.await_args.kwargs["input"])
     assert "msg:99" not in sent
     assert "!gpt" not in sent
     assert "QUESTION:" in sent
@@ -412,15 +579,18 @@ def test_person_correction_inherits_latest_from_humans_only():
     assert not routing.explicitly_latest(current.content, [prior, current], 2)
 
 
-async def test_invalid_assessment_uses_one_reformulation(monkeypatch, db):
+async def test_invalid_assessment_repairs_same_evidence(monkeypatch, db):
     bad = assessment(citations=[citation("msg:neighbor")])
     create, tool = setup(monkeypatch, db, [route(reformulation="tog transport"), bad,
         assessment(), draft(), verified()])
     assert (await reply()).text == draft()["claims"][0]["text"]
     calls = [c.kwargs["arguments"] for c in tool.await_args_list if c.kwargs["name"] == "recall_community_memory"]
-    assert len(calls) == 2
-    assert calls[1]["query"] == "tog transport"
-    assert calls[1]["channel_id"] == calls[0]["channel_id"]
+    assert len(calls) == 1
+    first = json.loads(create.await_args_list[1].kwargs["input"])
+    repair = json.loads(create.await_args_list[2].kwargs["input"])
+    assert repair.pop("validation_feedback") == "unknown_handle"
+    first.pop("validation_feedback")
+    assert first == repair
 
 
 @pytest.mark.parametrize("question,end", [

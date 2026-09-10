@@ -6,6 +6,7 @@ from typing import Any
 import aiosqlite
 
 from klatrebot_v2.db import user_aliases
+from klatrebot_v2.llm.prompt import load_prompt
 from klatrebot_v2.memory.retrieval import get_memory_sources, recall_community_memory
 from klatrebot_v2.memory.retrieval import RecallResult
 from klatrebot_v2.memory.search import search
@@ -17,32 +18,32 @@ MEMORY_TOOL_DEFS = [
         "type": "function",
         "name": "recall_community_memory",
         "strict": True,
-        "description": "Søg i originale chatbeskeder og afledte minder. Brug normalt relevance og null for unødvendige filtre. Latest er kun til den SENESTE besked fra en bestemt person. Læs kilderne før du svarer; et søgeresultat er en kandidat, ikke et verificeret svar.",
+        "description": load_prompt("memory_fields", "recall"),
         "parameters": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Emnet der skal findes. Brug korte semantiske søgeord/parafraser; læg person og dato i deres filtre. Prøv en anden formulering hvis kilderne ikke besvarer spørgsmålet."},
-                "channel_id": {"type": ["integer", "null"], "description": "Null bruger den aktuelle kanal."},
-                "people": {"type": ["array", "null"], "items": {"type": "integer"}, "description": "Kendte Discord-ID'er for den efterspurgte person, ellers null. Brug enten people eller people_names. Gæt ikke afsenderen ved spørgsmål om 'vi'."},
+                "query": {"type": "string", "description": load_prompt("memory_fields", "query")},
+                "channel_id": {"type": ["integer", "null"], "description": load_prompt("memory_fields", "channel_id")},
+                "people": {"type": ["array", "null"], "items": {"type": "integer"}, "description": load_prompt("memory_fields", "people")},
                 "people_names": {
                     "type": ["array", "null"],
                     "items": {"type": "string"},
-                    "description": "Den efterspurgte persons navn, alias eller Discord-mention. Null hvis personen ikke er angivet. Bevar personen ved omsøgning; skift kun hvis brugeren retter målet.",
+                    "description": load_prompt("memory_fields", "people_names"),
                 },
-                "date_start": {"type": ["string", "null"], "description": "ISO timestamp, inklusiv. Oversæt tidsrum i spørgsmålet til filtre; null når ukendt. Opfind ikke et startår."},
-                "date_end": {"type": ["string", "null"], "description": "ISO timestamp, eksklusiv. Null når ukendt. En søgning i juli slutter ved starten af august."},
+                "date_start": {"type": ["string", "null"], "description": load_prompt("memory_fields", "date_start")},
+                "date_end": {"type": ["string", "null"], "description": load_prompt("memory_fields", "date_end")},
                 "memory_types": {
                     "type": ["array", "null"],
-                    "description": "Normalt NULL: søger både rå beskeder og minder. Kategorier som fact/plan søger KUN afledte minder og udelukker rå beskeder. Brug kun et filter hvis brugeren specifikt ønsker den dokumenttype. Ved latest: null eller [raw_message].",
+                    "description": load_prompt("memory_fields", "memory_types"),
                     "items": {
                         "type": "string",
                         "enum": ["raw_message", "decision", "plan", "preference", "fact", "opinion", "open_question", "lore"],
                     },
                 },
-                "limit": {"type": ["integer", "null"], "minimum": 1, "maximum": 10, "description": "Null giver 10 kandidater."},
-                "order": {"type": ["string", "null"], "enum": ["relevance", "latest", None], "description": "Null/relevance til almindelige historiske spørgsmål, også 'hvornår skete X?'. Latest KUN når brugeren spørger om den seneste forekomst fra en navngiven afsender; søger bagud i 30-dages vinduer."},
-                "person_role": {"type": ["string", "null"], "enum": ["author", "subject", None], "description": "Normalt null/author, også ved personens planer, handlinger, afbud og begrundelser. Subject KUN når brugeren udtrykkeligt spørger hvad ANDRE sagde om personen; subject kan ikke finde personens egne jeg-beskeder uden navne. Latest kræver author."},
-                "cursor": {"type": ["string", "null"], "description": "Null i første søgning. Ved latest: brug continuation_cursor med UÆNDREDE filtre for at fortsætte bagud. At udvide date_start alene flytter ikke det seneste 30-dages vindue."},
+                "limit": {"type": ["integer", "null"], "minimum": 1, "maximum": 10, "description": load_prompt("memory_fields", "limit")},
+                "order": {"type": ["string", "null"], "enum": ["relevance", "latest", None], "description": load_prompt("memory_fields", "order")},
+                "person_role": {"type": ["string", "null"], "enum": ["author", "subject", None], "description": load_prompt("memory_fields", "person_role")},
+                "cursor": {"type": ["string", "null"], "description": load_prompt("memory_fields", "cursor")},
             },
             "required": ["query", "channel_id", "people", "people_names", "date_start", "date_end", "memory_types", "limit", "order", "person_role", "cursor"],
             "additionalProperties": False,
@@ -52,12 +53,12 @@ MEMORY_TOOL_DEFS = [
         "type": "function",
         "name": "get_memory_sources",
         "strict": True,
-        "description": "Hent rå kildebeskeder og nabokontekst. Kontrollér altid afsender og relevans før du tilskriver nogen et udsagn. Nabobeskeder kan have andre afsendere.",
+        "description": load_prompt("memory_fields", "sources"),
         "parameters": {
             "type": "object",
             "properties": {
                 "source_handles": {"type": "array", "items": {"type": "string"}},
-                "context_radius": {"type": ["integer", "null"], "minimum": 0, "maximum": 10, "description": "Null giver fem nabobeskeder. Brug 0 for kun direkte kilder."},
+                "context_radius": {"type": ["integer", "null"], "minimum": 0, "maximum": 10, "description": load_prompt("memory_fields", "context_radius")},
             },
             "required": ["source_handles", "context_radius"],
             "additionalProperties": False,
@@ -80,7 +81,7 @@ async def execute_memory_tool(
             end = _parse_dt(arguments.get("date_end"))
         except (ValueError, TypeError):
             return json.dumps({"answerable": False, "status": "invalid_arguments", "results": [],
-                "source_handles": [], "coverage": {"instruction": "Ret datoerne til ISO-tidspunkter eller null. Bevar den ønskede person og kanal."}})
+                "source_handles": [], "coverage": {"instruction": load_prompt("tool_feedback", "invalid_dates")}})
         people_resolution = await user_aliases.resolve_people_names(conn, arguments.get("people_names"))
         people = _merge_people(arguments.get("people"), people_resolution.resolved_ids)
         unknown_ids = []

@@ -50,4 +50,6 @@ async def test_alias_prompt_map_formats_known_aliases(db):
 
     prompt_map = await user_aliases.format_alias_prompt_map(db)
 
-    assert "Tobi / Tobias -> 42" in prompt_map
+    assert "Tobi / Tobias -> <@42>" in prompt_map
+    resolved = await user_aliases.resolve_people_names(db, [prompt_map.split(" -> ")[1]])
+    assert resolved.resolved_ids == [42]

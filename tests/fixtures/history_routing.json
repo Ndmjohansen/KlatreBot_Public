@@ -1,4 +1,7 @@
 [
+  {"id":"album-recipient-general","question":"Anbefal tre obskure albums udgivet efter 2005 til @Anna, som gerne vil prøve noget nyt.","expected_route":"general","expected_evidence":[],"messages":[],"recent":["Jeg har kun lyttet til gamle plader på det seneste."]},
+  {"id":"album-recommendation-history","question":"Hvilke albums anbefalede Anna her i chatten?","expected_route":"history","expected_evidence":["supported"],"messages":["Jeg anbefaler albummet Third af Portishead."]},
+  {"id":"gift-recipient-general","question":"Foreslå tre gaver til Bo, der kan lide havearbejde, for højst 300 kroner.","expected_route":"general","expected_evidence":[],"messages":[]},
   {"id":"transport-general","question":"Hvordan fungerer elektriske tog?","expected_route":"general","expected_evidence":[],"messages":[]},
   {"id":"transport-history","question":"Hvad skrev Anna her om sin togtur?","expected_route":"history","expected_evidence":["supported"],"messages":["Jeg tog toget til Odense i går."]},
   {"id":"work-general","question":"Hvad er et dagligt standup-møde?","expected_route":"general","expected_evidence":[],"messages":[]},

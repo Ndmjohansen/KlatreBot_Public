@@ -22,7 +22,8 @@ from klatrebot_v2.memory.evaluate import percentile
 async def evaluate(fixture, report):
     raw = fixture.read_bytes()
     cases = json.loads(raw)
-    assert len(cases) == 52 and len({c["id"] for c in cases}) == 52
+    if not cases or any(not c["id"] for c in cases) or len({c["id"] for c in cases}) != len(cases):
+        raise ValueError("Question IDs must be nonempty and unique")
     settings = chat.get_settings().model_copy(update=dict(memory_enabled=True,
         memory_backend="mempalace", memory_active_run_name=None, memory_active_run_id=0))
     output = dict(fixture_sha256=hashlib.sha256(raw).hexdigest(), model=settings.model,
@@ -131,6 +132,8 @@ def implementation_hash():
     digest = hashlib.sha256()
     for module in (chat, answering, adjudication, routing, latest, pronouns, migrations, user_pronouns, tools, palace, search):
         digest.update(Path(module.__file__).read_bytes())
+    from klatrebot_v2.llm.prompt import prompt_fingerprint
+    digest.update(prompt_fingerprint().encode())
     return digest.hexdigest()
 
 

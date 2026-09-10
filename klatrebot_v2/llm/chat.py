@@ -18,7 +18,7 @@ def _resolve_mentions(text: str, names: dict[int, str]) -> str:
 
 from klatrebot_v2.settings import get_settings
 from klatrebot_v2.llm.client import get_client
-from klatrebot_v2.llm.prompt import load_soul
+from klatrebot_v2.llm.prompt import load_soul, render_prompt
 from klatrebot_v2.db import messages as msg_db, user_aliases, users as users_db
 from klatrebot_v2.memory import tools as memory_tools
 from klatrebot_v2.memory.store import get_compiler_run_by_name
@@ -102,10 +102,13 @@ async def reply(
                     channel_id=channel_id, mentions=mentions, invoking_message_id=invoking_message_id,
                     session=session)
         except TimeoutError:
+            from klatrebot_v2.memory.answering import TIMEOUT_LIMIT
+            session.timed_out = True
             session.failures.append("DeadlineExceeded")
             for part in session.parts:
                 if part.text is None:
                     part.record.coverage = "incomplete"
+                    part.text = TIMEOUT_LIMIT
             return ChatReply(text=session.render(), sources=session.urls)
         except Exception as exc:
             session.failures.append(type(exc).__name__)
@@ -152,15 +155,9 @@ async def _reply(*, question, asking_user_id, channel_id, mentions=None,
     memory_run_id = await _active_memory_run_id(conn, s) if s.memory_enabled else None
     alias_map = await user_aliases.format_alias_prompt_map(conn) if memory_run_id is not None else "(memory disabled)"
 
-    full_input = (
-        f"CONTEXT (recent chat):\n{context_block}\n\n"
-        f"Asking user Discord ID: {asking_user_id}\n\n"
-        f"CHANNEL_ID: {channel_id}\n\n"
-        f"MENTION_TOKENS (use exact token to ping a user):\n{mention_tokens}\n\n"
-        f"KNOWN_USER_ALIASES:\n{alias_map}\n"
-        "Use people_names in memory tool calls for these aliases.\n\n"
-        f"QUESTION: {resolved_question}"
-    )
+    full_input = render_prompt("chat_input", context=context_block,
+        asking_user_id=asking_user_id, channel_id=channel_id, mention_tokens=mention_tokens,
+        alias_map=alias_map, question=resolved_question)
     client = get_client()
     if session is not None:
         from klatrebot_v2.memory.answering import answer
@@ -224,25 +221,11 @@ async def _active_memory_run_id(conn, settings) -> int | None:
     return settings.memory_active_run_id if settings.memory_active_run_id is not None else fallback
 
 
-_SUMMARY_INSTRUCTIONS = """
-**Instructions for the AI (Output must be in Danish):**
-
-1.  **Mandatory Opening Line (in Danish):**
-    Always begin your response with the exact Danish phrase: "Her er hvad boomerene har yappet om i stedet for at arbejde i dag" or a very similar, contextually appropriate humorous Danish variation.
-
-2.  **Primary Task:** Summarize the day's chat. Humorous tone, jokes that reference the actual content.
-
-3.  **User Identification:** Each line shows `Name (id): content`. Refer to people by name in the summary; NEVER print numeric IDs in the output.
-
-4.  **Length:** No 60-word cap; can be longer to cover the day. Stay in Danish.
-"""
-
-
 async def summarize(msgs) -> str:
     """Summarize a list of MessageWithAuthor. One Responses API call, no tools."""
     soul = load_soul()
     body = "\n".join(f"{m.user_display_name} ({m.user_id}): {m.content}" for m in msgs)
-    full_input = f"{soul}\n\n{_SUMMARY_INSTRUCTIONS}\n\nBESKEDER:\n{body}"
+    full_input = render_prompt("summary", soul=soul, messages=body)
     client = get_client()
     resp = await client.responses.create(
         model=get_settings().model,

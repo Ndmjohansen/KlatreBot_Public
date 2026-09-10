@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from klatrebot_v2.db import connection, migrations, user_aliases
 from klatrebot_v2.llm.client import get_client
-from klatrebot_v2.llm.prompt import load_soul
+from klatrebot_v2.llm.prompt import load_soul, render_prompt
 from klatrebot_v2.memory.compiler import CompilerConfig, compile_run
 from klatrebot_v2.memory.segmentation import SegmentConfig
 from klatrebot_v2.memory import store
@@ -47,17 +47,9 @@ async def chat_once(
     effective_channel_id = channel_id or s.discord_main_channel_id
     alias_map = await user_aliases.format_alias_prompt_map(conn)
     client = get_client()
-    prompt = (
-        f"{load_soul()}\n\n"
-        "Du kører i offline memory-test. Brug memory tools ved historiske spørgsmål. "
-        "Vis ikke kilder medmindre brugeren spørger. "
-        "Når et spørgsmål nævner personer, brug people_names i memory tool-kaldet.\n\n"
-        f"CHANNEL_ID: {effective_channel_id}\n"
-        f"KNOWN_USER_ALIASES:\n{alias_map}\n"
-        f"RECENT_LIMIT: {recent_limit}\n"
-        f"RECENT CLI CHAT:\n{_format_recent_context(recent_context)}\n\n"
-        f"QUESTION: {question}"
-    )
+    prompt = render_prompt("memory_cli", soul=load_soul(), channel_id=effective_channel_id,
+        alias_map=alias_map, recent_limit=recent_limit,
+        recent_context=_format_recent_context(recent_context), question=question)
     resp = await client.responses.create(
         model=s.model,
         input=prompt,
