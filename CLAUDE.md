@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 KlatreBot — Danish-language Discord bot for a climbing group. Wraps OpenAI with Discord history storage. Deployed as systemd service on a Raspberry Pi; main branch auto-deploys via SSH GitHub Action.
 
-V1 source is archived under `klatrebot_v1/` (kept for reference; not deployed).
+V1 source may be kept locally under ignored `klatrebot_v1/` (not deployed or distributed).
 
 ## Environment
 

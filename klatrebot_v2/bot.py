@@ -26,11 +26,12 @@ class KlatreBot(commands.Bot):
         Path(s.soul_path).read_text(encoding="utf-8")
         # Open DB and run migrations
         self.db_conn = await connection.open(s.db_path)
-        await migrations.run(self.db_conn)
+        await migrations.run(self.db_conn, pronoun_seeds=s.user_pronoun_seeds)
         await user_aliases.sync_config_aliases(self.db_conn, s.user_aliases_config_path)
         from klatrebot_v2.llm import chat as llm_chat
         llm_chat.set_db_conn_provider(lambda: self.db_conn)
         # Register cogs
+        await self.load_extension("klatrebot_v2.cogs.admin")
         await self.load_extension("klatrebot_v2.cogs.chat")
         await self.load_extension("klatrebot_v2.cogs.auto_responses")
         await self.load_extension("klatrebot_v2.cogs.attendance")

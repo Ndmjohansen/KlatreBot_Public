@@ -1,0 +1,42 @@
+[
+  {"id":"transport-history","question":"Hvilken bus sagde personen, man kan tage til havnen?","messages":[
+    {"id":101,"day":1,"text":"Bus 14 kører direkte til havnen."},
+    {"id":102,"day":9,"text":"Jeg kom for sent til bussen i morges."}],"expected":{"101":"relevant","102":"irrelevant"}},
+  {"id":"preference-history","question":"Hvad foretrækker personen at drikke til morgenmad?","messages":[
+    {"id":201,"day":1,"text":"Jeg foretrækker te til morgenmaden."},
+    {"id":202,"day":9,"text":"Jeg købte kaffe til gæsterne."}],"expected":{"201":"relevant","202":"irrelevant"}},
+  {"id":"technical-reason","question":"Hvorfor ændrede personen porten på sin server?","messages":[
+    {"id":301,"day":1,"text":"Jeg flyttede serveren til port 8081, fordi 8080 allerede var optaget."},
+    {"id":302,"day":9,"text":"Jeg opdaterede også Python den dag."}],"expected":{"301":"relevant","302":"irrelevant"}},
+  {"id":"latest-location","question":"Hvilket sted foreslog personen senest til vores middag?","order":"latest","messages":[
+    {"id":401,"day":1,"text":"Jeg foreslår Café Broen til vores middag."},
+    {"id":402,"day":8,"text":"Til vores middag foreslår jeg i stedet Bistro Haven."},
+    {"id":403,"day":9,"text":"Jeg gik forbi Café Broen på vej hjem."}],"expected":{"401":"relevant","402":"relevant","403":"irrelevant"},"selected":402},
+  {"id":"latest-book","question":"Hvilken bog anbefalede personen senest?","order":"latest","messages":[
+    {"id":501,"day":1,"text":"Læs Fyrtårnet, den kan jeg varmt anbefale."},
+    {"id":502,"day":8,"text":"Min nye boganbefaling er Skyggespil."},
+    {"id":503,"day":9,"text":"Jeg afleverede Fyrtårnet på biblioteket."}],"expected":{"501":"relevant","502":"relevant","503":"irrelevant"},"selected":502},
+  {"id":"completed-not-planned","question":"Hvilken distance har personen faktisk løbet?","messages":[
+    {"id":601,"day":1,"text":"Jeg løb fem kilometer i går."},
+    {"id":602,"day":9,"text":"Jeg planlægger et halvmaraton næste år."}],"expected":{"601":"relevant","602":"irrelevant"}},
+  {"id":"workplace-process","question":"Hvordan sagde personen, at arbejdsopgaverne bliver fordelt?","messages":[
+    {"id":701,"day":1,"text":"Formanden fordeler opgaverne på tavlen hver morgen."},
+    {"id":702,"day":9,"text":"Vi har fået en ny tavle i kantinen."}],"expected":{"701":"relevant","702":"irrelevant"}},
+  {"id":"mixed-speaker","question":"Hvilket operativsystem bruger afsender 1 på sin laptop?","messages":[
+    {"id":801,"day":1,"text":"Min laptop kører Linux."},
+    {"id":802,"day":9,"text":"Min kollega bruger Windows."}],"context":[
+    {"id":803,"day":9,"author":2,"text":"Jeg har Windows på min laptop."}],"expected":{"801":"relevant","802":"irrelevant"}},
+  {"id":"no-evidence","question":"Hvilken farve sagde personen, at deres cykel har?","messages":[
+    {"id":901,"day":1,"text":"Jeg cykler på arbejde."},
+    {"id":902,"day":9,"text":"Himlen var flot blå i morges."}],"expected":{"901":"irrelevant","902":"irrelevant"}},
+  {"id":"short-contextual-reply","question":"Hvilken dag valgte personen til middagen?","messages":[
+    {"id":1002,"day":8,"text":"Den sidste passer mig."}],"context":[
+    {"id":1001,"day":8,"author":2,"text":"Skal vores middag være torsdag eller fredag?"}],"expected":{"1002":"relevant"}},
+  {"id":"latest-setting","question":"Hvilken port sagde personen senest, at serveren lytter på?","order":"latest","messages":[
+    {"id":1101,"day":1,"text":"Serveren lytter på port 8080."},
+    {"id":1102,"day":8,"text":"Jeg har nu sat serveren til at lytte på port 9000."},
+    {"id":1103,"day":9,"text":"Port 8080 nævnes stadig i den gamle vejledning."}],"expected":{"1101":"relevant","1102":"relevant","1103":"irrelevant"},"selected":1102},
+  {"id":"unclear-cause","question":"Hvorfor skiftede personen cykel?","messages":[
+    {"id":1201,"day":1,"text":"Min gamle cykel knirker lidt."},
+    {"id":1202,"day":9,"text":"Jeg købte en anden cykel. Der var flere grunde, dem tager vi senere."}],"expected":{"1201":"uncertain","1202":"uncertain"}}
+]

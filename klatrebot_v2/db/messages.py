@@ -41,11 +41,11 @@ async def recent(conn: aiosqlite.Connection, *, channel_id: int, limit: int) -> 
         SELECT discord_message_id, channel_id, user_id, content, timestamp_utc, is_bot
         FROM (
             SELECT * FROM messages
-            WHERE channel_id = ?
-            ORDER BY timestamp_utc DESC
+            WHERE channel_id = ? AND deleted=0
+            ORDER BY timestamp_utc DESC, discord_message_id DESC
             LIMIT ?
         )
-        ORDER BY timestamp_utc ASC
+        ORDER BY timestamp_utc ASC, discord_message_id ASC
         """,
         (channel_id, limit),
     )
@@ -82,12 +82,12 @@ async def recent_with_authors(
                COALESCE(u.display_name, '?'), m.content, m.timestamp_utc, m.is_bot
         FROM (
             SELECT * FROM messages
-            WHERE channel_id = ?
-            ORDER BY timestamp_utc DESC
+            WHERE channel_id = ? AND deleted=0
+            ORDER BY timestamp_utc DESC, discord_message_id DESC
             LIMIT ?
         ) m
         LEFT JOIN users u ON u.discord_user_id = m.user_id
-        ORDER BY m.timestamp_utc ASC
+        ORDER BY m.timestamp_utc ASC, m.discord_message_id ASC
         """,
         (channel_id, limit),
     )
@@ -121,6 +121,7 @@ async def in_window(
         FROM messages m
         LEFT JOIN users u ON u.discord_user_id = m.user_id
         WHERE m.channel_id = ?
+          AND m.deleted=0
           AND m.timestamp_utc >= ?
           AND m.timestamp_utc <  ?
         ORDER BY m.timestamp_utc ASC
@@ -140,3 +141,16 @@ async def in_window(
         )
         for r in rows
     ]
+
+
+async def edit(conn, message_id: int, content: str):
+    await conn.execute("UPDATE messages SET content=? WHERE discord_message_id=? AND deleted=0", (content, message_id))
+    await conn.commit()
+
+
+async def delete(conn, message_ids):
+    # A delete may race the original listener's asynchronous insert. Remember
+    # its ID even if the row is not present yet; triggers clear any late insert.
+    await conn.executemany("INSERT OR IGNORE INTO message_tombstones(discord_message_id) VALUES (?)",
+                           [(mid,) for mid in message_ids])
+    await conn.commit()

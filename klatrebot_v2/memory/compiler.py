@@ -143,7 +143,9 @@ async def compile_run(
         for index, segment in enumerate(segments):
             segment_key = _segment_key(segment)
             existing_segment = await store.get_segment_by_key(conn, run_id=run_id, segment_key=segment_key)
-            if existing_segment and existing_segment["status"] in {"summarized", "skipped"}:
+            invalid = existing_segment and await conn.execute_fetchall(
+                'SELECT 1 FROM memory_invalid_handles WHERE handle=?', (f"seg:{existing_segment['id']}",))
+            if existing_segment and not invalid and existing_segment["status"] in {"summarized", "skipped"}:
                 stats.segments_existing += 1
                 continue
             overlapping = await store.overlapping_segments_for_messages(
@@ -480,7 +482,8 @@ async def _build_one_daily_ambient_memory(
         day_start_utc=day_start.isoformat(),
         day_end_utc=day_end.isoformat(),
     )
-    if existing and existing["status"] == "completed" and existing["source_fingerprint"] == fingerprint:
+    invalid = existing and await conn.execute_fetchall('SELECT 1 FROM memory_invalid_current WHERE handle=?', (f"amb:{existing['id']}",))
+    if existing and not invalid and existing["status"] == "completed" and existing["source_fingerprint"] == fingerprint:
         return
     ambient_input = RollupInput(
         period_type="daily_ambient",
@@ -491,7 +494,11 @@ async def _build_one_daily_ambient_memory(
     )
     source_segment_ids = [int(segment["id"]) for segment in segments]
     try:
+        from klatrebot_v2.memory.evidence import signature
+        before = await signature(conn, sources)
         summary = _normalize_rollup_summary(await ambient_summarizer(ambient_input))
+        if before != await signature(conn, sources):
+            raise ValueError('Compiler evidence changed during generation')
     except Exception as exc:
         await store.upsert_daily_ambient_memory(
             conn,
@@ -511,7 +518,7 @@ async def _build_one_daily_ambient_memory(
         )
         stats.daily_ambient_failed += 1
         return
-    await store.upsert_daily_ambient_memory(
+    published_id = await store.upsert_daily_ambient_memory(
         conn,
         run_id=run_id,
         channel_id=channel_id,
@@ -527,7 +534,11 @@ async def _build_one_daily_ambient_memory(
         source_fingerprint=fingerprint,
         source_segments=source_segment_ids,
     )
-    stats.daily_ambient_completed += 1
+    from klatrebot_v2.memory.evidence import verify_publication
+    if await verify_publication(conn, f'amb:{published_id}', sources, before):
+        stats.daily_ambient_completed += 1
+    else:
+        stats.daily_ambient_failed += 1
 
 
 async def _build_one_rollup(
@@ -566,7 +577,8 @@ async def _build_one_rollup(
         period_start_utc=period_start.isoformat(),
         period_end_utc=period_end.isoformat(),
     )
-    if existing and existing["status"] == "completed" and existing["source_fingerprint"] == fingerprint:
+    invalid = existing and await conn.execute_fetchall('SELECT 1 FROM memory_invalid_current WHERE handle=?', (f"roll:{existing['id']}",))
+    if existing and not invalid and existing["status"] == "completed" and existing["source_fingerprint"] == fingerprint:
         return
     rollup_input = RollupInput(
         period_type=period_type,
@@ -576,7 +588,11 @@ async def _build_one_rollup(
         sources=sources,
     )
     try:
+        from klatrebot_v2.memory.evidence import signature
+        before = await signature(conn, sources)
         summary = _normalize_rollup_summary(await rollup_summarizer(rollup_input))
+        if before != await signature(conn, sources):
+            raise ValueError('Compiler evidence changed during generation')
     except Exception as exc:
         await store.upsert_rollup(
             conn,
@@ -602,7 +618,7 @@ async def _build_one_rollup(
         else:
             stats.monthly_rollups_failed += 1
         return
-    await store.upsert_rollup(
+    published_id = await store.upsert_rollup(
         conn,
         run_id=run_id,
         channel_id=channel_id,
@@ -621,6 +637,13 @@ async def _build_one_rollup(
         source_memory_items=source_memory_items,
         source_rollups=source_rollups,
     )
+    from klatrebot_v2.memory.evidence import verify_publication
+    if not await verify_publication(conn, f'roll:{published_id}', sources, before):
+        if period_type == 'week':
+            stats.weekly_rollups_failed += 1
+        else:
+            stats.monthly_rollups_failed += 1
+        return
     if period_type == "week":
         stats.weekly_rollups_completed += 1
     else:

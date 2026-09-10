@@ -1,0 +1,32 @@
+[Unit]
+Description=KlatreBot MemPalace Retrieval Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=120
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@PROJECT_DIR@
+EnvironmentFile=/etc/klatrebot/klatrebot.env
+Environment=PATH=@POETRY_DIR@:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=OMP_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+ExecStart=/usr/bin/env poetry run python3 -m klatrebot_v2.memory.worker serve
+Restart=on-failure
+RestartSec=10
+RuntimeDirectory=klatrebot-retrieval
+RuntimeDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=@DATA_DIR@ -/home/@SERVICE_USER@/.cache/pypoetry -/home/@SERVICE_USER@/.config/pypoetry -/home/@SERVICE_USER@/.local/share/pypoetry
+MemoryMax=768M
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

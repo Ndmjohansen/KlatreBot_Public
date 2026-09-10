@@ -19,6 +19,21 @@ jobs:
           script: |
             set -e
             cd ~/KlatreBot/KlatreBot_Public/
+            # These values belong only to the host, not GitHub. Preserve them
+            # across the environment rewrite, and check before stopping services.
+            for private_setting in USER_PRONOUN_SEEDS DOWNUS_GIF_URL PELLE_GIF_URL; do
+              if ! sudo grep -q "^${private_setting}=" /etc/klatrebot/klatrebot.env; then
+                echo "Configure ${private_setting} in the Pi environment before deployment." >&2
+                exit 1
+              fi
+            done
+            PRIVATE_ENV="$(sudo grep -E '^(USER_PRONOUN_SEEDS|DOWNUS_GIF_URL|PELLE_GIF_URL)=' /etc/klatrebot/klatrebot.env)"
+            # Stop old writers before replacing code or the shared environment.
+            for unit in klatrebot-memory.timer klatrebot-memory.service klatrebot-retrieval.service klatrebot.service; do
+              if systemctl cat "$unit" >/dev/null 2>&1; then
+                sudo systemctl stop "$unit"
+              fi
+            done
             git fetch origin main
             git checkout main || git checkout -b main origin/main
             git pull --ff-only origin main
@@ -47,9 +62,13 @@ jobs:
             DISCORD_MAIN_CHANNEL_ID=${{ secrets.DISCORD_MAIN_CHANNEL_ID }}
             DISCORD_SANDBOX_CHANNEL_ID=${{ secrets.DISCORD_SANDBOX_CHANNEL_ID }}
             ADMIN_USER_ID=${{ secrets.ADMIN_USER_ID }}
-            DB_PATH=/home/Admin/klatrebot-data/klatrebot_v2.db
+            DB_PATH=/home/${{ secrets.SSH_USER }}/klatrebot-data/klatrebot_v2.db
             USER_ALIASES_CONFIG_PATH=${{ secrets.USER_ALIASES_CONFIG_PATH }}
-            MEMORY_ENABLED=${{ vars.MEMORY_ENABLED || 'false' }}
+            MEMORY_ENABLED=${{ vars.MEMORY_ENABLED || 'true' }}
+            MEMORY_BACKEND=${{ vars.MEMORY_BACKEND || 'mempalace' }}
+            MEMORY_SYNC_ENABLED=${{ vars.MEMORY_SYNC_ENABLED || 'true' }}
+            MEMORY_SOCKET_PATH=/run/klatrebot-retrieval/worker.sock
+            MEMORY_INDEX_PATH=/home/${{ secrets.SSH_USER }}/klatrebot-data/mempalace
             MEMORY_ACTIVE_RUN_NAME=${{ vars.MEMORY_ACTIVE_RUN_NAME || 'production' }}
             MEMORY_COMPILER_MODEL=${{ vars.MEMORY_COMPILER_MODEL || 'gpt-5.6-luna' }}
             MEMORY_SEGMENT_GAP_MINUTES=${{ vars.MEMORY_SEGMENT_GAP_MINUTES || '30' }}
@@ -61,33 +80,43 @@ jobs:
             MEMORY_ROLLING_ENABLED=${{ vars.MEMORY_ROLLING_ENABLED || 'false' }}
             MEMORY_ROLLING_RUN_NAME=${{ vars.MEMORY_ROLLING_RUN_NAME || 'production' }}
             EOF
+            printf '%s\n' "$PRIVATE_ENV" | sudo tee -a /etc/klatrebot/klatrebot.env >/dev/null
 
             # Ensure DB data dir exists (idempotent)
-            sudo install -d -o Admin -g Admin -m 755 /home/Admin/klatrebot-data
-            sudo install -d -o Admin -g Admin -m 755 \
-              /home/Admin/.cache/pypoetry \
-              /home/Admin/.config/pypoetry \
-              /home/Admin/.local/share/pypoetry
+            sudo install -d -o ${{ secrets.SSH_USER }} -g ${{ secrets.SSH_USER }} -m 755 /home/${{ secrets.SSH_USER }}/klatrebot-data
+            sudo install -d -o ${{ secrets.SSH_USER }} -g ${{ secrets.SSH_USER }} -m 755 \
+              /home/${{ secrets.SSH_USER }}/.cache/pypoetry \
+              /home/${{ secrets.SSH_USER }}/.config/pypoetry \
+              /home/${{ secrets.SSH_USER }}/.local/share/pypoetry
 
             # Patch deployment sentinels in the unit file.
             POETRY_DIR="$(dirname "$POETRY_BIN")"
             sed \
-              -e "s|@SERVICE_USER@|Admin|g" \
-              -e "s|@PROJECT_DIR@|/home/Admin/KlatreBot/KlatreBot_Public|g" \
-              -e "s|@DATA_DIR@|/home/Admin/klatrebot-data|g" \
+              -e "s|@SERVICE_USER@|${{ secrets.SSH_USER }}|g" \
+              -e "s|@PROJECT_DIR@|/home/${{ secrets.SSH_USER }}/KlatreBot/KlatreBot_Public|g" \
+              -e "s|@DATA_DIR@|/home/${{ secrets.SSH_USER }}/klatrebot-data|g" \
               -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
               klatrebot.service \
               | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot.service
             sed \
-              -e "s|@SERVICE_USER@|Admin|g" \
-              -e "s|@PROJECT_DIR@|/home/Admin/KlatreBot/KlatreBot_Public|g" \
-              -e "s|@DATA_DIR@|/home/Admin/klatrebot-data|g" \
+              -e "s|@SERVICE_USER@|${{ secrets.SSH_USER }}|g" \
+              -e "s|@PROJECT_DIR@|/home/${{ secrets.SSH_USER }}/KlatreBot/KlatreBot_Public|g" \
+              -e "s|@DATA_DIR@|/home/${{ secrets.SSH_USER }}/klatrebot-data|g" \
               -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
               klatrebot-memory.service \
               | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot-memory.service
             sudo install -m 644 -o root -g root klatrebot-memory.timer /etc/systemd/system/klatrebot-memory.timer
+            sed \
+              -e "s|@SERVICE_USER@|${{ secrets.SSH_USER }}|g" \
+              -e "s|@PROJECT_DIR@|/home/${{ secrets.SSH_USER }}/KlatreBot/KlatreBot_Public|g" \
+              -e "s|@DATA_DIR@|/home/${{ secrets.SSH_USER }}/klatrebot-data|g" \
+              -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
+              klatrebot-retrieval.service \
+              | sudo install -m 644 -o root -g root /dev/stdin /etc/systemd/system/klatrebot-retrieval.service
 
             sudo systemctl daemon-reload
-            sudo systemctl enable --now klatrebot-memory.timer
+            sudo systemctl enable klatrebot-retrieval.service
+            sudo systemctl restart klatrebot-retrieval.service
             sudo systemctl restart klatrebot
+            sudo systemctl enable --now klatrebot-memory.timer
             sudo systemctl status klatrebot --no-pager

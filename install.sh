@@ -46,6 +46,16 @@ fi
 POETRY_DIR="$(dirname "$POETRY_BIN")"
 echo "Using poetry at: $POETRY_BIN"
 
+BOT_WAS_ACTIVE=false
+if systemctl is-active --quiet "$SERVICE_NAME"; then
+    BOT_WAS_ACTIVE=true
+fi
+for unit in klatrebot-memory.timer klatrebot-memory.service klatrebot-retrieval.service klatrebot.service; do
+    if systemctl cat "$unit" >/dev/null 2>&1; then
+        systemctl stop "$unit"
+    fi
+done
+
 echo "[1/6] Installing dependencies"
 sudo -H -u "$TARGET_USER" bash -lc \
     "cd '$PROJECT_DIR' && '$POETRY_BIN' install --sync --no-interaction"
@@ -68,7 +78,14 @@ DISCORD_SANDBOX_CHANNEL_ID=0
 ADMIN_USER_ID=0
 DB_PATH=${DATA_DIR}/klatrebot_v2.db
 USER_ALIASES_CONFIG_PATH=
+USER_PRONOUN_SEEDS='{}'
+DOWNUS_GIF_URL=
+PELLE_GIF_URL=
 MEMORY_ENABLED=false
+MEMORY_BACKEND=legacy
+MEMORY_SYNC_ENABLED=false
+MEMORY_SOCKET_PATH=/run/klatrebot-retrieval/worker.sock
+MEMORY_INDEX_PATH=${DATA_DIR}/mempalace
 MEMORY_ACTIVE_RUN_NAME=production
 MEMORY_COMPILER_MODEL=gpt-5.6-luna
 MEMORY_SEGMENT_GAP_MINUTES=30
@@ -104,10 +121,22 @@ sed \
     "$PROJECT_DIR/klatrebot-memory.service" > "$TMP_MEMORY_UNIT"
 install -m 644 -o root -g root "$TMP_MEMORY_UNIT" "$MEMORY_SERVICE_FILE"
 install -m 644 -o root -g root "$PROJECT_DIR/klatrebot-memory.timer" "$MEMORY_TIMER_FILE"
+sed \
+    -e "s|@SERVICE_USER@|${TARGET_USER}|g" \
+    -e "s|@PROJECT_DIR@|${PROJECT_DIR}|g" \
+    -e "s|@DATA_DIR@|${DATA_DIR}|g" \
+    -e "s|@POETRY_DIR@|${POETRY_DIR}|g" \
+    "$PROJECT_DIR/klatrebot-retrieval.service" > "$TMP_MEMORY_UNIT"
+install -m 644 -o root -g root "$TMP_MEMORY_UNIT" /etc/systemd/system/klatrebot-retrieval.service
 
 echo "[5/6] Reloading + enabling systemd unit"
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
+systemctl enable klatrebot-retrieval.service
+systemctl restart klatrebot-retrieval.service
+if "$BOT_WAS_ACTIVE"; then
+    systemctl start "$SERVICE_NAME"
+fi
 systemctl enable --now klatrebot-memory.timer
 
 echo "[6/6] Installing backup cron"

@@ -91,6 +91,7 @@ async def chat_once(
                 run_id=run_id,
                 name=call["name"],
                 arguments=arguments,
+                settings=s,
             )
             debug_outputs.append((call["name"], output))
             tool_outputs.append(
@@ -167,7 +168,7 @@ def _build_parser() -> argparse.ArgumentParser:
 async def _compile(args) -> int:
     conn = await connection.open(args.db)
     try:
-        await migrations.run(conn)
+        await migrations.run(conn, pronoun_seeds=getattr(get_settings(), "user_pronoun_seeds", {}))
         await user_aliases.sync_config_aliases(conn, get_settings().user_aliases_config_path)
         run_id = await compile_run(
             conn,
@@ -201,7 +202,7 @@ async def _compile_rolling() -> int:
     lock_owner = f"{socket.gethostname()}:{uuid.uuid4()}"
     now = _utcnow()
     try:
-        await migrations.run(conn)
+        await migrations.run(conn, pronoun_seeds=getattr(s, "user_pronoun_seeds", {}))
         await user_aliases.sync_config_aliases(conn, s.user_aliases_config_path)
         locked = await store.acquire_rolling_lock(
             conn,
@@ -261,7 +262,7 @@ async def _compile_rolling() -> int:
 async def _chat(args) -> int:
     conn = await connection.open(args.db)
     try:
-        await migrations.run(conn)
+        await migrations.run(conn, pronoun_seeds=getattr(get_settings(), "user_pronoun_seeds", {}))
         await user_aliases.sync_config_aliases(conn, get_settings().user_aliases_config_path)
         recent_context: list[str] = []
         while True:

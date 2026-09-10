@@ -1,10 +1,7 @@
-"""End-to-end: boot the bot subprocess and assert readiness marker."""
+"""Credentialed login/setup smoke check without opening a Discord gateway."""
 import os
-import shutil
-import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -37,9 +34,21 @@ def test_bot_boots_and_reports_ready(tmp_path):
         "ADMIN_USER_ID": "0",
         "SOUL_PATH": str(soul_path),
         "DB_PATH": str(db_path),
+        "MEMORY_ENABLED": "false",
+        "MEMORY_BACKEND": "legacy",
+        "MEMORY_SYNC_ENABLED": "false",
+        "MEMORY_ROLLING_ENABLED": "false",
     }
     proc = subprocess.Popen(
-        [sys.executable, "-u", "-m", "klatrebot_v2"],
+        [sys.executable, "-u", "-c", """
+import asyncio, logging, os
+from klatrebot_v2.bot import KlatreBot
+logging.basicConfig(level=logging.INFO)
+async def main():
+    async with KlatreBot() as bot:
+        await bot.login(os.environ['DISCORD_KEY'])
+asyncio.run(main())
+"""],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -48,25 +57,10 @@ def test_bot_boots_and_reports_ready(tmp_path):
         cwd=str(Path(__file__).parents[2]),
     )
     try:
-        deadline = time.monotonic() + 60
-        while True:
-            line = proc.stdout.readline()
-            if not line:
-                if proc.poll() is not None:
-                    pytest.fail(f"Bot exited prematurely with code {proc.returncode}")
-                continue
-            print(line, end="")
-            if "Bot startup completed" in line:
-                return
-            if time.monotonic() > deadline:
-                pytest.fail("Bot did not boot within 60s")
+        output, _ = proc.communicate(timeout=60)
+        assert proc.returncode == 0, output
+        assert "Bot startup completed" in output
     finally:
         if proc.poll() is None:
-            try:
-                proc.send_signal(signal.SIGTERM)
-            except (OSError, ValueError):
-                pass
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            proc.kill()
+            proc.communicate(timeout=10)

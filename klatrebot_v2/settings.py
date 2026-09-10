@@ -1,5 +1,6 @@
 """Configuration loaded from .env via Pydantic BaseSettings."""
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     soul_path: str = "./SOUL.MD"
     db_path: str = "./klatrebot_v2.db"
     user_aliases_config_path: str | None = None
+    user_pronoun_seeds: dict[int, str] = {}
+    downus_gif_url: str = ""
+    pelle_gif_url: str = ""
 
     timezone: str = "Europe/Copenhagen"
     klatretid_days: list[int] = [0, 3]
@@ -39,6 +43,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     memory_enabled: bool = False
+    memory_backend: Literal["legacy", "mempalace"] = "legacy"
+    memory_socket_path: str = "/run/klatrebot-retrieval/worker.sock"
+    memory_index_path: str | None = None
+    memory_sync_enabled: bool = False
     memory_active_run_id: int | None = None
     memory_active_run_name: str | None = None
     memory_compiler_model: str = "gpt-5.6-luna"
