@@ -39,4 +39,12 @@ async def test_gpt_reply_suppresses_link_embeds(monkeypatch):
     ctx.reply.assert_awaited_once()
     assert chat_cog.chat.reply.await_args.kwargs["invoking_message_id"] == 100
     assert ctx.reply.await_args.kwargs["suppress_embeds"] is True
-    assert "https://example.com/source" in ctx.reply.await_args.args[0]
+    assert ctx.reply.await_args.args[0] == "Et svar med en kilde."
+
+
+def test_strip_tracking_removes_only_utm_params():
+    from klatrebot_v2.llm.chat import strip_tracking
+    text = ("Se ([grus.ncc.dk](https://grus.ncc.dk/guide/?utm_source=openai)) og "
+            "https://b.dk/y?id=2&utm_source=openai og https://c.dk/z?q=a%20b")
+    assert strip_tracking(text) == ("Se ([grus.ncc.dk](https://grus.ncc.dk/guide/)) og "
+                                    "https://b.dk/y?id=2 og https://c.dk/z?q=a%20b")

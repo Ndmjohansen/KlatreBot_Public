@@ -3,6 +3,7 @@ import json
 import re
 import asyncio
 from typing import Callable
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel
 
@@ -56,6 +57,21 @@ def _extract_sources(resp) -> list[str]:
                     seen.add(url)
                     sources.append(url)
     return sources
+
+
+_URL_RE = re.compile(r"https?://[^\s<>()\[\]]+")
+
+
+def _clean_url(url: str) -> str:
+    parts = urlsplit(url)
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    query = [(k, v) for k, v in pairs if not k.startswith("utm_")]
+    return url if len(query) == len(pairs) else urlunsplit(parts._replace(query=urlencode(query)))
+
+
+def strip_tracking(text: str) -> str:
+    """Remove utm_* parameters from links the model wrote into the answer."""
+    return _URL_RE.sub(lambda m: _clean_url(m.group()), text)
 
 
 def _extract_function_calls(resp) -> list[dict]:

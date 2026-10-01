@@ -93,7 +93,8 @@ async def evaluate(fixture, report):
                 except Exception as exc:
                     error, answer_text = type(exc).__name__, ""
                 session = sessions[-1]
-                observed = [p.record.assessment.status for p in session.parts if p.kind != "general"]
+                # Inference parts are written by the general writer and have no assessment.
+                observed = [p.record.assessment.status for p in session.parts if p.kind not in {"general", "inference"}]
                 category = "latest" if any(p.latest for p in session.parts) else session.route
                 row = dict(id=case["id"], route=session.route, category=category, evidence=observed,
                     route_passed=session.route == case["expected_route"],

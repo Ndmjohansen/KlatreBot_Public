@@ -107,12 +107,37 @@ async def test_general_answer_keeps_context_used_to_interpret_followup(monkeypat
 
 
 @pytest.mark.parametrize("r", [route("ambiguous"), "invalid json", {"kind": "general", "too_many_parts": False, "parts": []}])
-async def test_ambiguous_and_invalid_route_search_first_then_clarify(monkeypatch, db, r):
-    create, tool = setup(monkeypatch, db, [r], rows=[])
-    text = (await reply()).text
-    assert answering.LIMITATIONS["bounded"] in text
-    assert answering.CLARIFY in text
+async def test_ambiguous_and_invalid_route_search_first_then_answer_generally(monkeypatch, db, r):
+    create, tool = setup(monkeypatch, db, [r, "Generelt svar"], rows=[])
+    assert (await reply()).text == "Generelt svar"
     assert tool.await_count == 2
+    assert create.await_count == 2
+    sent = json.loads(create.await_args.kwargs["input"])
+    assert sent["history"]["messages"] == []
+    assert "Danish soul" in create.await_args.kwargs["instructions"]
+
+
+async def test_inference_answers_from_found_history_without_assessment(monkeypatch, db):
+    rows = [source(text="Jeg kan ikke komme i aften, jeg er stadig svimmel.")]
+    create, tool = setup(monkeypatch, db, [route("inference"), "Mit bud: svimmelheden er tilbage."], rows=rows)
+    assert (await reply(question="Hvad tror vi hans undskyldning er i dag?")).text == "Mit bud: svimmelheden er tilbage."
+    assert [c.kwargs["name"] for c in tool.await_args_list] == ["recall_community_memory", "get_memory_sources"]
+    assert create.await_count == 2
+    sent = json.loads(create.await_args.kwargs["input"])
+    assert [m["content"] for m in sent["history"]["messages"]] == [rows[0]["content"]]
+    assert create.await_args.kwargs["tools"] == [{"type": "web_search"}]
+
+
+async def test_inference_without_history_still_answers(monkeypatch, db):
+    create, tool = setup(monkeypatch, db, [route("inference"), "Intet at gå efter, men jeg gætter på knæet."], rows=[])
+    assert (await reply()).text == "Intet at gå efter, men jeg gætter på knæet."
+    assert tool.await_count == 2
+    assert json.loads(create.await_args.kwargs["input"])["history"]["messages"] == []
+
+
+async def test_inference_person_clarification_is_not_overwritten(monkeypatch, db):
+    create, _ = setup(monkeypatch, db, [route("inference", people_names=["Unknown"])], status="clarification_required")
+    assert (await reply()).text == answering.PERSON_CLARIFY
     assert create.await_count == 1
 
 
@@ -449,11 +474,15 @@ async def test_latest_context_reaches_draft_and_verifier_once(monkeypatch, db):
 
 async def test_routing_timeout_still_searches(monkeypatch, db):
     create, tool = setup(monkeypatch, db, [], rows=[])
+    calls = []
     async def slow(**kwargs):
-        await asyncio.sleep(10)
+        calls.append(kwargs)
+        if len(calls) == 1:
+            await asyncio.sleep(10)
+        return SimpleNamespace(output_text="Generelt svar", output=[], usage=None)
     create.side_effect = slow
     monkeypatch.setattr(answering, "ROUTING_SECONDS", .01)
-    assert answering.CLARIFY in (await reply()).text
+    assert (await reply()).text == "Generelt svar"
     assert tool.await_count == 2
 
 
@@ -548,7 +577,7 @@ async def test_router_does_not_treat_invocation_as_prior_conversation(monkeypatc
     monkeypatch.setattr(chat.msg_db, "recent_with_authors", AsyncMock(return_value=[
         SourceMessage(**source(99, text="!gpt Hvad med toget?"))]))
     await reply(invoking_message_id=99)
-    sent = model_input(create.await_args.kwargs["input"])
+    sent = model_input(create.await_args_list[0].kwargs["input"])
     assert "msg:99" not in sent
     assert "!gpt" not in sent
     assert "QUESTION:" in sent
