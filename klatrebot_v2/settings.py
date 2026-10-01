@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     admin_user_id: int
 
     # Optional (defaults)
-    model: str = "gpt-5.6-luna"
+    model: str = "gpt-6.1-sol"
     soul_path: str = "./prompts/soul.md"
     db_path: str = "./klatrebot_v2.db"
     user_aliases_config_path: str | None = None
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     memory_sync_enabled: bool = False
     memory_active_run_id: int | None = None
     memory_active_run_name: str | None = None
-    memory_compiler_model: str = "gpt-5.6-luna"
+    memory_compiler_model: str = "gpt-6-luna"
     memory_segment_gap_minutes: int = 30
     memory_segment_min_human_messages: int = 8
     memory_segment_min_total_chars: int = 300

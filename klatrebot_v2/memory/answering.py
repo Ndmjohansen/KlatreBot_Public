@@ -14,11 +14,10 @@ from klatrebot_v2.memory.latest import select_latest
 DEADLINE_SECONDS = 60
 ROUTING_SECONDS = 10
 LIMITATIONS = {
-    "bounded": "Jeg fandt ikke belæg for det i de kilder, jeg undersøgte.",
+    "bounded": "Jeg kan ikke finde noget om det i chatten.",
     "incomplete": "Jeg kunne ikke undersøge historikken tilstrækkeligt.",
     "unavailable": "Jeg kunne ikke slå historikken op lige nu.",
 }
-CLARIFY = "Mener du noget fra vores chathistorik eller et generelt spørgsmål?"
 PERSON_CLARIFY = "Hvilken person mener du? Brug gerne en Discord-mention."
 INTERPRETATION_LIMIT = "Jeg fandt relevante beskeder, men er ikke sikker nok på, hvordan de skal forstås, til at give et pålideligt svar."
 ASSESSMENT_LIMIT = "Jeg kunne ikke vurdere kilderne sikkert nok til at svare."
@@ -43,10 +42,7 @@ class PartResult:
             if self.record.coverage != "bounded":
                 text += "\n\n" + LIMITATIONS[self.record.coverage]
             return text
-        text = LIMITATIONS[self.record.coverage]
-        if self.kind == "ambiguous" and self.record.coverage == "bounded":
-            text += "\n\n" + CLARIFY
-        return text
+        return LIMITATIONS[self.record.coverage]
 
 
 class AnswerSession:
@@ -156,26 +152,48 @@ async def answer(session, *, conn, settings, client, run_id, full_input, questio
             part = routing.preserve_authored_month(part, question, getattr(settings, "timezone", "Europe/Copenhagen"))
             part = routing.preserve_cutoff(part, question, getattr(settings, "timezone", "Europe/Copenhagen"))
             if part.kind == "general":
-                session.phase = "general"
-                response = await client.responses.create(model=settings.model, instructions=soul +
-                    "\n\n" + load_prompt("general"),
-                    input=json.dumps(dict(question=part.question, conversation=full_input), ensure_ascii=False),
-                    tools=[{"type": "web_search"}], reasoning={"effort": "low"},
-                    text={"verbosity": "medium"}, include=["web_search_call.action.sources"])
-                from klatrebot_v2.llm.chat import _extract_sources
-                result.text = response.output_text or "Jeg kunne ikke besvare den generelle del."
-                session.urls.extend(_extract_sources(response))
+                await general(session, result, part, client=client, settings=settings,
+                              full_input=full_input, soul=soul)
+                continue
+            await historical(session, result, part, conn=conn, settings=settings, client=client,
+                run_id=run_id, channel_id=channel_id, recent=recent, invoking_message_id=invoking_message_id,
+                retrieve_only=part.kind == "inference")
+            if result.text is not None:
+                continue
+            # Inference reasons from whatever was found. An ambiguous question that
+            # history cannot answer gets the general reading, not a clarifying question.
+            if part.kind == "inference":
+                history = result.record.sources
+            elif (part.kind == "ambiguous" and not result.record.assessment.evidence
+                  and result.record.coverage == "bounded"):
+                history = {}
             else:
-                await historical(session, result, part, conn=conn, settings=settings, client=client,
-                    run_id=run_id, channel_id=channel_id, recent=recent, invoking_message_id=invoking_message_id)
+                continue
+            await general(session, result, part, client=client, settings=settings,
+                          full_input=full_input, soul=soul, history=history)
         except Exception as exc:
             result.record.failures.append(type(exc).__name__)
             if result.record.coverage != "unavailable":
                 result.record.coverage = "incomplete"
 
 
+async def general(session, result, part, *, client, settings, full_input, soul, history=None):
+    session.phase = "general"
+    data = dict(question=part.question, conversation=full_input)
+    if history is not None:
+        data["history"] = evidence.compact_sources(history)
+    response = await client.responses.create(model=settings.model, instructions=soul +
+        "\n\n" + load_prompt("general"), input=json.dumps(data, ensure_ascii=False),
+        tools=[{"type": "web_search"}], reasoning={"effort": "low"},
+        text={"verbosity": "medium"}, include=["web_search_call.action.sources"])
+    from klatrebot_v2.llm.chat import _extract_sources
+    result.text = response.output_text or "Jeg kunne ikke besvare den generelle del."
+    session.urls.extend(_extract_sources(response))
+
+
 async def historical(session, result, part, *, conn, settings, client, run_id,
-                     channel_id, recent, invoking_message_id):
+                     channel_id, recent, invoking_message_id, retrieve_only=False):
+    """Retrieve, assess, draft and verify. retrieve_only stops once sources are admitted."""
     record = result.record
     assessment_repairs = 0
     args = part.arguments(channel_id)
@@ -241,8 +259,10 @@ async def historical(session, result, part, *, conn, settings, client, run_id,
         # target author's literal quote or become attributed to that author.
         record.context.update(scoped_sources(rows, dict(scope, people=None), invoking_message_id))
         record.context = {h: m for h, m in record.context.items() if h not in record.sources}
-        session.phase = "assessment"
-        if record.sources:
+        if retrieve_only:
+            if record.sources:
+                return
+        elif record.sources:
             feedback = None
             while True:
                 session.phase = "assessment_repair" if feedback else "assessment"
@@ -264,13 +284,13 @@ async def historical(session, result, part, *, conn, settings, client, run_id,
                     record.failures.append("assessment:" + type(exc).__name__)
                     result.text = ASSESSMENT_LIMIT
                     return
-        if record.assessment.status not in {"not_found", "uncertain"}:
+        if not retrieve_only and record.assessment.status not in {"not_found", "uncertain"}:
             break
         if attempt == 0:
             session.retries += 1
             # Only the query can change. Resolved people, dates and channel stay fixed.
             args = dict(scope, query=part.reformulation or part.question, people_names=None, cursor=None)
-    if not record.assessment.evidence:
+    if retrieve_only or not record.assessment.evidence:
         return
     admitted = {c.source_handle for c in record.assessment.evidence}
     data = dict(question=part.question, admitted_evidence=record.assessment.model_dump(),

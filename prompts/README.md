@@ -5,7 +5,8 @@ validation, deadlines, data serialization and tool execution. Prompt text owns
 task instructions, tone, field descriptions and model-facing error guidance.
 
 - `soul.md`: shared personality and response principles.
-- `routing.md`, `general.md`: intent routing and general answers.
+- `routing.md`, `general.md`: intent routing, and general answers that may use
+  visible chat and retrieved history (also for inference questions).
 - `source_evidence.md`, `assessment.md`, `draft.md`, `verification.md`: historical
   stages, composed with `evidence_rules.md`.
 - `chat_input.md`, `summary.md`, `memory_cli.md`: request templates.

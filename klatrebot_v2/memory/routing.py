@@ -17,7 +17,7 @@ class StrictModel(BaseModel):
 
 
 class Part(StrictModel):
-    kind: Literal["general", "history", "ambiguous"]
+    kind: Literal["general", "history", "inference", "ambiguous"]
     question: str
     query: str = Field(description=_RECALL_FIELDS["query"]["description"])
     reformulation: str = Field(description=load_prompt("memory_fields", "reformulation"))
@@ -38,7 +38,7 @@ class Part(StrictModel):
 
 
 class Route(StrictModel):
-    kind: Literal["general", "history", "mixed", "ambiguous"]
+    kind: Literal["general", "history", "inference", "mixed", "ambiguous"]
     too_many_parts: bool
     parts: list[Part] = Field(max_length=3)
 
@@ -49,7 +49,7 @@ class Route(StrictModel):
         kinds = {p.kind for p in self.parts}
         if not kinds or (self.kind != "mixed" and kinds != {self.kind}):
             raise ValueError("Inconsistent route")
-        if self.kind == "mixed" and ("general" not in kinds or not kinds & {"history", "ambiguous"}):
+        if self.kind == "mixed" and ("general" not in kinds or not kinds & {"history", "inference", "ambiguous"}):
             raise ValueError("Mixed route needs independent general and historical parts")
         return self
 

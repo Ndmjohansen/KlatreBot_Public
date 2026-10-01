@@ -53,5 +53,8 @@
   {"id":"edge-outage","question":"Hvad skrev Anna her om flytningen?","expected_route":"history","expected_evidence":["not_found"],"messages":[],"failure":"unavailable"},
   {"id":"edge-deadline","question":"Hvad skrev Anna her om flytningen?","expected_route":"history","expected_evidence":["not_found"],"messages":[],"failure":"deadline"},
   {"id":"edge-latest","question":"Hvad var Annas seneste besked om sin bog?","expected_route":"history","expected_evidence":["supported"],"messages":["Jeg læser Dune.","Jeg er færdig med Dune."],"latest":true},
-  {"id":"edge-plan-action","question":"Gennemførte Anna ifølge chatten maratonløbet?","expected_route":"history","expected_evidence":["uncertain"],"messages":["Jeg planlægger at løbe maraton næste år."]}
+  {"id":"edge-plan-action","question":"Gennemførte Anna ifølge chatten maratonløbet?","expected_route":"history","expected_evidence":["uncertain"],"messages":["Jeg planlægger at løbe maraton næste år."]},
+  {"id":"excuse-inference","question":"Hvad tror vi @Bo's undskyldning er i dag for ikke at komme til klatring?","expected_route":"inference","expected_evidence":[],"author":2,"messages":["Jeg kan ikke komme i aften, jeg er stadig svimmel."]},
+  {"id":"late-inference","question":"Kommer Anna mon for sent til klatring i dag?","expected_route":"inference","expected_evidence":[],"messages":["Undskyld, jeg kommer et kvarter for sent igen."]},
+  {"id":"roast-inference","question":"Roast @Anna ud fra hvordan hun plejer at klatre.","expected_route":"inference","expected_evidence":[],"messages":["Jeg gav op på den gule rute igen."]}
 ]

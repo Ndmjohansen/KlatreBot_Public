@@ -73,7 +73,7 @@ if [ ! -f "$ENV_FILE" ]; then
     install -m 600 -o root -g root /dev/stdin "$ENV_FILE" <<EOF
 DISCORD_KEY=replace_me
 OPENAI_KEY=replace_me
-MODEL=gpt-5.6-luna
+MODEL=gpt-6.1-sol
 SOUL_PATH=./prompts/soul.md
 DISCORD_MAIN_CHANNEL_ID=0
 DISCORD_SANDBOX_CHANNEL_ID=0
@@ -89,7 +89,7 @@ MEMORY_SYNC_ENABLED=false
 MEMORY_SOCKET_PATH=/run/klatrebot-retrieval/worker.sock
 MEMORY_INDEX_PATH=${DATA_DIR}/mempalace
 MEMORY_ACTIVE_RUN_NAME=production
-MEMORY_COMPILER_MODEL=gpt-5.6-luna
+MEMORY_COMPILER_MODEL=gpt-6-luna
 MEMORY_SEGMENT_GAP_MINUTES=30
 MEMORY_SEGMENT_MIN_HUMAN_MESSAGES=8
 MEMORY_SEGMENT_MIN_TOTAL_CHARS=300

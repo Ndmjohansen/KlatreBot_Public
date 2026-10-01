@@ -43,9 +43,8 @@ class ChatCog(commands.Cog):
         elapsed = time.monotonic() - start
         logger.info("llm.reply duration=%.2fs", elapsed)
 
-        text = result.text
-        if result.sources:
-            text += f"\n\n_Kilder: {', '.join(result.sources[:3])}_"
+        # Cited links are already inline in the answer; no separate sources footer.
+        text = chat.strip_tracking(result.text)
         if not text.strip():
             logger.warning("llm.reply empty text user_id=%d", ctx.author.id)
             text = "Jeg kunne ikke finde på et svar. Prøv igen."
